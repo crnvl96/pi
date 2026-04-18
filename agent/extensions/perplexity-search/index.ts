@@ -1,50 +1,18 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+import type { ApiSearchRequest } from "./client.ts";
+import { searchWeb, type SearchRecencyFilter } from "./client.ts";
+import { formatSearchContext } from "./format.ts";
 
-type SearchRecencyFilter = "hour" | "day" | "week" | "month" | "year";
+const searchRecencyOptions = [
+  "hour",
+  "day",
+  "week",
+  "month",
+  "year",
+] as const satisfies readonly SearchRecencyFilter[];
 
-type ApiSearchRequest = {
-  query: string;
-  max_results?: number;
-  country?: string;
-  max_tokens?: number;
-  max_tokens_per_page?: number;
-  search_language_filter?: string[];
-  search_domain_filter?: string[];
-  last_updated_after_filter?: string;
-  last_updated_before_filter?: string;
-  search_after_date_filter?: string;
-  search_before_date_filter?: string;
-  search_recency_filter?: SearchRecencyFilter;
-};
-
-type ApiSearchPage = {
-  title: string;
-  url: string;
-  snippet: string;
-  date?: string | null;
-  last_updated?: string | null;
-};
-
-type ApiSearchResponse = {
-  results: ApiSearchPage[];
-  id: string;
-  server_time?: string | null;
-};
-
-const searchRecencySchema = Type.Union([
-  Type.Literal("hour"),
-  Type.Literal("day"),
-  Type.Literal("week"),
-  Type.Literal("month"),
-  Type.Literal("year"),
-]);
-
-const extensionDir = path.dirname(fileURLToPath(import.meta.url));
-const authFilePath = path.join(extensionDir, "..", "..", "auth.json");
+const searchRecencySchema = Type.Union(searchRecencyOptions.map((value) => Type.Literal(value)));
 
 function clampResults(value: number | undefined): number | undefined {
   if (value === undefined) {
@@ -59,67 +27,45 @@ function compactList(values: string[] | undefined): string[] | undefined {
   }
 
   const cleaned = values.map((value) => value.trim()).filter((value) => value.length > 0);
-
   return cleaned.length > 0 ? cleaned : undefined;
 }
 
-function getDomain(url: string): string | undefined {
-  try {
-    return new URL(url).hostname;
-  } catch {
-    return undefined;
-  }
-}
-
-function formatResult(page: ApiSearchPage, index: number): string {
-  const meta: string[] = [];
-  const domain = getDomain(page.url);
-  if (domain) {
-    meta.push(`domain: ${domain}`);
-  }
-  if (page.date) {
-    meta.push(`published: ${page.date}`);
-  }
-  if (page.last_updated) {
-    meta.push(`updated: ${page.last_updated}`);
-  }
-
-  const metaLine = meta.length > 0 ? `${meta.join(" | ")}\n` : "";
-  return `[${index + 1}] ${page.title}\n${page.url}\n${metaLine}snippet: ${page.snippet}`;
-}
-
-async function readApiKey(): Promise<string> {
-  const auth = JSON.parse(await readFile(authFilePath, "utf8")) as {
-    perplexity?: {
-      apiKey?: string;
-    };
+function buildPayload(params: {
+  query: string;
+  max_results?: number;
+  country?: string;
+  max_tokens?: number;
+  max_tokens_per_page?: number;
+  search_language_filter?: string[];
+  search_domain_filter?: string[];
+  last_updated_after_filter?: string;
+  last_updated_before_filter?: string;
+  search_after_date_filter?: string;
+  search_before_date_filter?: string;
+  search_recency_filter?: SearchRecencyFilter;
+}): ApiSearchRequest {
+  const payload: ApiSearchRequest = {
+    query: params.query.trim(),
+    max_results: clampResults(params.max_results ?? 5),
+    country: params.country?.trim().toUpperCase(),
+    max_tokens: params.max_tokens,
+    max_tokens_per_page: params.max_tokens_per_page,
+    search_language_filter: compactList(params.search_language_filter)?.map((value) =>
+      value.toLowerCase(),
+    ),
+    search_domain_filter: compactList(params.search_domain_filter),
+    search_recency_filter: params.search_recency_filter,
+    last_updated_after_filter: params.last_updated_after_filter?.trim(),
+    last_updated_before_filter: params.last_updated_before_filter?.trim(),
+    search_after_date_filter: params.search_after_date_filter?.trim(),
+    search_before_date_filter: params.search_before_date_filter?.trim(),
   };
 
-  return auth.perplexity?.apiKey?.trim() ?? "";
-}
-
-async function searchWeb(
-  params: ApiSearchRequest,
-  signal?: AbortSignal,
-): Promise<ApiSearchResponse> {
-  const apiKey = await readApiKey();
-
-  const response = await fetch("https://api.perplexity.ai/search", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(params),
-    signal,
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Perplexity search failed with status ${response.status}: ${body}`);
+  if (!payload.query) {
+    throw new Error("query must not be empty");
   }
 
-  return (await response.json()) as ApiSearchResponse;
+  return payload;
 }
 
 export default function perplexitySearchExtension(pi: ExtensionAPI) {
@@ -196,38 +142,14 @@ export default function perplexitySearchExtension(pi: ExtensionAPI) {
       ),
     }),
     execute: async (_toolCallId, params, signal) => {
-      const payload: ApiSearchRequest = {
-        query: params.query.trim(),
-        max_results: clampResults(params.max_results ?? 5),
-        country: params.country?.trim().toUpperCase(),
-        max_tokens: params.max_tokens,
-        max_tokens_per_page: params.max_tokens_per_page,
-        search_language_filter: compactList(params.search_language_filter)?.map((value) =>
-          value.toLowerCase(),
-        ),
-        search_domain_filter: compactList(params.search_domain_filter),
-        search_recency_filter: params.search_recency_filter,
-        last_updated_after_filter: params.last_updated_after_filter?.trim(),
-        last_updated_before_filter: params.last_updated_before_filter?.trim(),
-        search_after_date_filter: params.search_after_date_filter?.trim(),
-        search_before_date_filter: params.search_before_date_filter?.trim(),
-      };
-
-      if (!payload.query) {
-        throw new Error("query must not be empty");
-      }
-
+      const payload = buildPayload(params);
       const result = await searchWeb(payload, signal);
-      const renderedResults =
-        result.results.length > 0
-          ? result.results.map((page, index) => formatResult(page, index)).join("\n\n")
-          : "No results returned.";
 
       return {
         content: [
           {
             type: "text",
-            text: `Perplexity web search context for: ${payload.query}\n\nUse the numbered results below as external context and cite URLs when relevant.\n\n${renderedResults}`,
+            text: formatSearchContext(payload.query, result.results),
           },
         ],
         details: {
