@@ -1,7 +1,8 @@
 {
   "lastChangelogVersion": "0.67.68",
   "packages": [],
-  "defaultProvider": "openrouter",
-  "defaultModel": "anthropic/claude-opus-4.7",
-  "defaultThinkingLevel": "off"
+  "skills": ["./skills"],
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-5.4",
+  "defaultThinkingLevel": "medium"
 }
