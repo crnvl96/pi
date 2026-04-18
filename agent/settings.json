@@ -1,0 +1,8 @@
+{
+  "lastChangelogVersion": "0.67.68",
+  "packages": [
+    "npm:pi-smart-fetch"
+  ],
+  "defaultProvider": "openrouter",
+  "defaultModel": "minimax/minimax-m2.5"
+}
