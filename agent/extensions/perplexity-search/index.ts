@@ -46,7 +46,7 @@ function buildPayload(params: {
 }): ApiSearchRequest {
   const payload: ApiSearchRequest = {
     query: params.query.trim(),
-    max_results: clampResults(params.max_results ?? 5),
+    max_results: clampResults(params.max_results ?? 3),
     country: params.country?.trim().toUpperCase(),
     max_tokens: params.max_tokens,
     max_tokens_per_page: params.max_tokens_per_page,
@@ -83,7 +83,7 @@ export default function perplexitySearchExtension(pi: ExtensionAPI) {
       query: Type.String({ description: "Search query" }),
       max_results: Type.Optional(
         Type.Integer({
-          description: "Maximum number of results to return, from 1 to 20. Defaults to 5.",
+          description: "Maximum number of results to return, from 1 to 20. Defaults to 3.",
           minimum: 1,
           maximum: 20,
         }),
