@@ -23,6 +23,8 @@ The report must be self-contained and complete. A reader should be able to under
 
 If some decisions remain unresolved, record them explicitly as open questions together with why they remain open, what options are still on the table, and what downstream decisions they affect.
 
+Be specific. Capture concrete decisions, rationale, and constraints. The document should be detailed enough that someone new to the project could pick it up later and understand what to build and why.
+
 The report should be thorough and include all relevant information gathered during the grilling session, including:
 
 - the problem being solved
@@ -71,5 +73,3 @@ Prefer a clear structure such as:
 ## Open Questions
 
 ## Further Notes
-
-Be specific. Capture concrete decisions, rationale, and constraints. The document should be detailed enough that someone new to the project could pick it up later and understand what to build and why.
