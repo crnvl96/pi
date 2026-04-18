@@ -1,0 +1,34 @@
+# Local/private pi data
+auth.json
+sessions/
+
+# Node
+node_modules/
+
+# Environment/secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary/editor files
+*.tmp
+*.temp
+*.bak
+
+# Caches/build/test output
+.cache/
+coverage/
+*.tsbuildinfo
+
+# Local tool/editor config
+*.local.*
+*.local
+.vscode/
+.idea/
