@@ -1,19 +1,19 @@
 ---
 name: to-issues
-description: Turn a root-level prd.md into independently grabbable, self-contained GitHub issues using tracer-bullet vertical slices. Use when user wants to convert a PRD into implementation issues that together deliver a feature, refactor, bug fix, or other enhancement.
+description: Turn root-level prd.md and plan.md into independently grabbable, self-contained GitHub issues using tracer-bullet vertical slices. Treat prd.md as primary and strongly consult plan.md for additional context. Use when user wants to convert a PRD into implementation issues that together deliver a feature, refactor, bug fix, or other enhancement.
 ---
 
 # To Issues
 
-Turn `prd.md` at the repository root into a set of detailed, complete, self-contained GitHub issues.
+Turn `prd.md` and `plan.md` at the repository root into a set of detailed, complete, self-contained GitHub issues.
 
-Treat `prd.md` as the primary source of truth, then refine the breakdown using relevant conversation context and what you learn from the codebase.
+Treat `prd.md` as the primary source of truth. Strongly consult `plan.md` as a complementary source to better contextualize the issue breakdown, then refine the breakdown using relevant conversation context and what you learn from the codebase.
 
 This skill is intended to be used after the planning pipeline:
 
 1. `grill-me` produces `plan.md`
 2. `to-prd` turns `plan.md` into `prd.md`
-3. `to-issues` turns `prd.md` into implementation issues
+3. `to-issues` uses `prd.md` as primary input and `plan.md` as complementary context to turn the plan into implementation issues
 
 The final issue set should collectively represent the full enhancement described by the PRD, whether that enhancement is a feature, refactor, bug fix, migration, or other meaningful codebase change.
 
@@ -21,10 +21,12 @@ The final issue set should collectively represent the full enhancement described
 
 - Use `prd.md` at the repository root as the primary source of truth.
 - Read `prd.md` before proposing any breakdown.
+- Strongly consult `plan.md` at the repository root as a complementary source of truth that adds planning intent, implementation rationale, and nuance that may not be fully captured in `prd.md`.
 - If `prd.md` does not exist, stop and tell the user that this skill requires `prd.md` at the repository root.
-- Create issues that are self-contained. A person should be able to read a single issue and understand the relevant context, scope, requirements, constraints, blast radius, implementation expectations, and definition of done without also reading `prd.md`.
+- If `plan.md` exists, read it and use it to improve issue quality, sequencing, and context.
+- Create issues that are self-contained. A person should be able to read a single issue and understand the relevant context, scope, requirements, constraints, blast radius, implementation expectations, and definition of done without also reading `prd.md` or `plan.md`.
 - Prefer tracer-bullet vertical slices over horizontal layer-by-layer breakdowns.
-- The full set of issues should cover the intended outcome in `prd.md`.
+- The full set of issues should cover the intended outcome in `prd.md`, while incorporating relevant nuance, sequencing, and implementation context from `plan.md` when available.
 - Each issue should be detailed enough that an engineer can pick it up later with minimal additional context.
 - Collectively, the issues should form a workable implementation sequence rather than an unordered pile of tasks.
 
@@ -34,9 +36,11 @@ The final issue set should collectively represent the full enhancement described
 
 Read `prd.md` from the repository root.
 
+If `plan.md` exists at the repository root, read it as well. Use it to recover planning context, tradeoffs, sequencing logic, and implementation detail that complements `prd.md`.
+
 If important implementation details are still unclear, explore the codebase to ground the issue breakdown in the current reality of the repository.
 
-If the user passes a GitHub issue number or URL as an argument, fetch it with `gh issue view <number> --comments` and use it as parent or umbrella context, but keep `prd.md` as the main planning input.
+If the user passes a GitHub issue number or URL as an argument, fetch it with `gh issue view <number> --comments` and use it as parent or umbrella context, but keep `prd.md` as the primary planning input and `plan.md` as a strongly encouraged complement when available.
 
 ### 2. Explore the codebase
 
@@ -50,7 +54,7 @@ Explore the codebase enough to understand:
 
 ### 3. Draft vertical slices
 
-Break the PRD into tracer-bullet issues. Each issue should represent a thin but complete slice through the system, not a single horizontal implementation layer.
+Break the PRD into tracer-bullet issues, using `plan.md` to sharpen sequencing, rationale, and implementation context. Each issue should represent a thin but complete slice through the system, not a single horizontal implementation layer.
 
 Slices may be `HITL` or `AFK`.
 
@@ -84,7 +88,7 @@ Ask the user:
 - Are the dependencies correct?
 - Should any slices be merged or split further?
 - Are the correct slices marked as HITL and AFK?
-- Does the full set of issues cover the intended outcome from `prd.md`?
+- Does the full set of issues cover the intended outcome from `prd.md`, with the right nuance and implementation context carried over from `plan.md` when relevant?
 
 Iterate until the user approves the breakdown.
 
@@ -96,7 +100,7 @@ Do not create any issues until the user has approved the breakdown.
 
 Create issues in dependency order so blockers are created first and can be referenced by number.
 
-Each issue must be self-contained and complete. Do not assume the implementer has read `prd.md`. Restate all relevant context from the PRD inside each issue.
+Each issue must be self-contained and complete. Do not assume the implementer has read `prd.md` or `plan.md`. Restate all relevant context from the PRD, plus any important complementary detail from `plan.md`, inside each issue.
 
 Each issue should clearly communicate:
 
@@ -125,7 +129,7 @@ A concise description of this slice and the end-to-end outcome it delivers.
 
 ## Context
 
-A self-contained explanation of the relevant product, technical, and architectural context for this slice. Include enough background that the reader does not need to open `prd.md` to understand the work.
+A self-contained explanation of the relevant product, technical, and architectural context for this slice. Include enough background that the reader does not need to open `prd.md` or `plan.md` to understand the work.
 
 ## Scope
 
