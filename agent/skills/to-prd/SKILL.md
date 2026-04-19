@@ -7,7 +7,7 @@ This skill takes the current conversation context and codebase understanding and
 
 ## Process
 
-1. Work from whatever is already in the conversation context. If the user passes one or more files as arguments, read them thoroughly.
+1. Work from whatever is already in the conversation context. If the user passes one or more files as arguments, read them thoroughly as well.
 
 2. Explore the repo to understand the current state of the codebase, if you haven't already.
 
@@ -17,7 +17,7 @@ A deep module (as opposed to a shallow module) is one which encapsulates a lot o
 
 Check with the user that these modules match their expectations. Check with the user which modules they want tests written for.
 
-4. Write the PRD using the template below to `<repository_root>/PLANS/prd.md`.
+4. Ask me for a location to save the PRD file.
 
 <prd-template>
 
@@ -54,6 +54,14 @@ A list of implementation decisions that were made. This can include:
 - Specific interactions
 
 Do NOT include specific file paths or code snippets. They may end up being outdated very quickly.
+
+## Tasks
+
+A LONG, checkbox list of tasks covering the user stories and based on the implementation decisions.
+The tasks should be numerically organized in order of implementation
+Each task should be as small as possible, and as detailed as possible
+Each task should have a closed scope, allowing separated commits and deploys
+Each task should have a LONG list of sub-tasks that break it down into smalle
 
 ## Testing Decisions
 
