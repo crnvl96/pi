@@ -9,4 +9,4 @@ Ask the questions one at a time.
 
 If a question can be answered by exploring the codebase, explore the codebase instead.
 
-At the end of the interview, write a extensively detailed report of it to `<repository_root>/PLANS/grill.md`
+At the end of the interview, write a extensively detailed report of it to `<repository_root>/PLANS/plan.md`

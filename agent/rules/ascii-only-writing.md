@@ -13,8 +13,8 @@ Use ASCII characters only in all generated or edited text.
 
 ```text
 # BAD
-Service status - healthy (with em dash)
-"quoted text" (with curly quotes)
+Service status — healthy (with em dash)
+“quoted text” (with curly quotes)
 
 # GOOD
 Service status - healthy
