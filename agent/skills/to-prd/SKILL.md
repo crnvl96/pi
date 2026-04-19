@@ -1,32 +1,32 @@
 ---
 name: to-prd
-description: Turn a root-level plan.md into a detailed PRD written to prd.md at the project root. Use when user wants to create a PRD from the current context or from a completed planning session.
+description: Turn `/tmp/plan.md` into a detailed PRD written to `/tmp/prd.md`. Use when user wants to create a PRD from the current context or from a completed planning session.
 ---
 
-This skill takes the planning output in `plan.md` at the repository root, combines it with codebase understanding and relevant conversation context, and produces a complete PRD in `prd.md` at the repository root.
+This skill takes the planning output in `/tmp/plan.md`, combines it with codebase understanding and relevant conversation context, and produces a complete PRD in `/tmp/prd.md`.
 
-Treat `plan.md` as the primary source of truth, then refine it using what you learn from the codebase.
+Treat `/tmp/plan.md` as the primary source of truth, then refine it using what you learn from the codebase.
 
 Do NOT create a GitHub issue.
 
-Do NOT interview the user unless critical information is missing, contradictory, or cannot be inferred from `plan.md` or the codebase.
+Do NOT interview the user unless critical information is missing, contradictory, or cannot be inferred from `/tmp/plan.md` or the codebase.
 
 ## Inputs and outputs
 
-- Input: `plan.md` at the repository root
-- Output: `prd.md` at the repository root
+- Input: `/tmp/plan.md`
+- Output: `/tmp/prd.md`
 
-You must read `plan.md` before writing the PRD.
+You must read `/tmp/plan.md` before writing the PRD.
 
-If `plan.md` does not exist, stop and tell the user that this skill requires `plan.md` at the repository root.
+If `/tmp/plan.md` does not exist, stop and tell the user that this skill requires `/tmp/plan.md`.
 
-`prd.md` must be self-contained. It must fully stand on its own and must not depend on the reader also having `plan.md`. Do not write a PRD that says "see plan.md" for essential context. Instead, absorb the relevant information from `plan.md`, resolve it into a clear structure, and restate it clearly in `prd.md`.
+`/tmp/prd.md` must be self-contained. It must fully stand on its own and must not depend on the reader also having `/tmp/plan.md`. Do not write a PRD that says "see /tmp/plan.md" for essential context. Instead, absorb the relevant information from `/tmp/plan.md`, resolve it into a clear structure, and restate it clearly in `/tmp/prd.md`.
 
-Do not merely paraphrase `plan.md`. Tighten it into a polished product and implementation document.
+Do not merely paraphrase `/tmp/plan.md`. Tighten it into a polished product and implementation document.
 
 ## Process
 
-1. Read `plan.md` from the repository root.
+1. Read `/tmp/plan.md`.
 
 2. Explore the repo to understand the current state of the codebase, if needed, so the PRD reflects reality rather than only the plan.
 
@@ -34,11 +34,11 @@ Do not merely paraphrase `plan.md`. Tighten it into a polished product and imple
 
 A deep module (as opposed to a shallow module) is one which encapsulates a lot of functionality in a simple, testable interface which rarely changes.
 
-4. If this module sketch exposes material ambiguities, contradictions, or unresolved choices not settled in `plan.md`, ask only the minimum clarifying questions needed before writing the PRD.
+4. If this module sketch exposes material ambiguities, contradictions, or unresolved choices not settled in `/tmp/plan.md`, ask only the minimum clarifying questions needed before writing the PRD.
 
-5. Write `prd.md` at the repository root using the template below.
+5. Write `/tmp/prd.md` using the template below.
 
-The PRD should synthesize the relevant contents of `plan.md`, clarify the final intended solution, and present it as a polished product and implementation document. It should be complete enough that someone new to the project can understand the problem, the solution, the decisions, and the expected implementation shape without reading any other planning artifact.
+The PRD should synthesize the relevant contents of `/tmp/plan.md`, clarify the final intended solution, and present it as a polished product and implementation document. It should be complete enough that someone new to the project can understand the problem, the solution, the decisions, and the expected implementation shape without reading any other planning artifact.
 
 If the plan and the actual codebase differ in important ways, reflect that explicitly in the PRD instead of silently copying outdated assumptions.
 

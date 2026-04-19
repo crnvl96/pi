@@ -15,9 +15,9 @@ Do not stop once there is "enough to start." Stop only when there is enough clar
 
 Do not stop at high-level ideas. Push on requirements, constraints, trade-offs, sequencing, dependencies, risks, edge cases, failure modes, testing strategy, rollout, and what is explicitly out of scope. Keep grilling until the plan is internally consistent and the important branches of the decision tree have been resolved.
 
-Once the grilling is complete, you must write a complete report to the project root named `plan.md`.
+Once the grilling is complete, you must write a complete report to `/tmp/plan.md`.
 
-`plan.md` is required. Do not end the task without writing it.
+`/tmp/plan.md` is required. Do not end the task without writing it.
 
 The report must be self-contained and complete. A reader should be able to understand the plan without reading the chat transcript. Synthesize the final understanding reached during the grilling session, not a raw transcript.
 
