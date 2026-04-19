@@ -27,3 +27,4 @@ Use it to search the web with the Perplexity Search API.
 - This extension calls `POST https://api.perplexity.ai/search` directly with `fetch()`.
 - No Perplexity SDK dependency is required.
 - The tool returns formatted text plus the raw API response in `details`.
+- Formatted output is truncated to pi's standard line and byte limits. When truncation happens, the full text is written to a temp file and the path is included in the tool output.
