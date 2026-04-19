@@ -1,6 +1,6 @@
 ---
 name: commit
-description: "Read this skill before making git commits"
+description: Standardize git commit messages. Use when user asks for commiting, wants to commit changes, or wants to update the repository's remote with local changes
 ---
 
 Create a git commit for the current changes using Conventional Commits format with a **polished, highly descriptive** message.
