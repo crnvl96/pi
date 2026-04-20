@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 export type SearchRecencyFilter = "hour" | "day" | "week" | "month" | "year";
 
@@ -33,17 +33,32 @@ export type ApiSearchResponse = {
   server_time?: string | null;
 };
 
-const extensionDir = path.dirname(fileURLToPath(import.meta.url));
-const authFilePath = path.join(extensionDir, "..", "..", "auth.json");
+const authFilePath = path.join(homedir(), ".pi", "agent", "auth.json");
 
 async function readApiKey(): Promise<string> {
-  const auth = JSON.parse(await readFile(authFilePath, "utf8")) as {
-    perplexity?: {
-      apiKey?: string;
-    };
-  };
+  const envApiKey = process.env.PERPLEXITY_API_KEY?.trim();
+  if (envApiKey) {
+    return envApiKey;
+  }
 
-  return auth.perplexity?.apiKey?.trim() ?? "";
+  try {
+    const auth = JSON.parse(await readFile(authFilePath, "utf8")) as {
+      perplexity?: {
+        apiKey?: string;
+      };
+    };
+
+    const fileApiKey = auth.perplexity?.apiKey?.trim();
+    if (fileApiKey) {
+      return fileApiKey;
+    }
+  } catch {
+    // Fall through to the explicit error below.
+  }
+
+  throw new Error(
+    `Missing Perplexity API key. Set PERPLEXITY_API_KEY or add perplexity.apiKey to ${authFilePath}`,
+  );
 }
 
 export async function searchWeb(

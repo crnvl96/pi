@@ -8,7 +8,6 @@ import {
   formatSize,
   type TruncationResult,
   truncateHead,
-  withFileMutationQueue,
 } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
@@ -107,9 +106,7 @@ export default function perplexitySearchExtension(pi: ExtensionAPI) {
       if (truncation.truncated) {
         const tempDir = await mkdtemp(join(tmpdir(), "pi-perplexity-search-"));
         const tempFile = join(tempDir, "output.txt");
-        await withFileMutationQueue(tempFile, async () => {
-          await writeFile(tempFile, fullText, "utf8");
-        });
+        await writeFile(tempFile, fullText, "utf8");
 
         details.truncation = truncation;
         details.fullOutputPath = tempFile;
@@ -157,7 +154,7 @@ export default function perplexitySearchExtension(pi: ExtensionAPI) {
       }
 
       if (expanded) {
-        const content = result.content[0];
+        const content = result.content.find((item) => item.type === "text");
         if (content?.type === "text") {
           const lines = content.text.split("\n");
           const previewLines = lines.slice(0, 16);

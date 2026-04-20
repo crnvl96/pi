@@ -4,7 +4,9 @@ This extension adds a `perplexity_web_search` tool to pi.
 
 ## Auth
 
-Store the Perplexity API key in `agent/auth.json` under `perplexity.apiKey`.
+Preferred: set `PERPLEXITY_API_KEY` in your environment.
+
+Alternative: store the Perplexity API key in `~/.pi/agent/auth.json` under `perplexity.apiKey`.
 
 Example:
 
