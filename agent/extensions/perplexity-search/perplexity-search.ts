@@ -16,7 +16,7 @@ import { searchWeb } from "./client.ts";
 import { formatSearchContext } from "./format.ts";
 
 const opts = {
-  max_results: 3,
+  max_results: 5,
   country: undefined,
   max_tokens: undefined,
   max_tokens_per_page: undefined,
