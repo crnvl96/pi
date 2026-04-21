@@ -1,11 +1,11 @@
 {
-  "lastChangelogVersion": "0.67.68",
+  "lastChangelogVersion": "0.68.0",
   "packages": [],
   "skills": [
     "./skills"
   ],
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.4",
-  "defaultThinkingLevel": "medium",
-  "hideThinkingBlock": false
+  "defaultThinkingLevel": "high",
+  "hideThinkingBlock": true
 }
