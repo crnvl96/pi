@@ -1,0 +1,14 @@
+{
+  "name": "pi-perplexity-extension",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@perplexity-ai/perplexity_ai": "^0.27.0"
+  },
+  "pi": {
+    "extensions": [
+      "./perplexity.ts"
+    ]
+  }
+}

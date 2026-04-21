@@ -1,3 +1,5 @@
 agent/auth.json
 agent/sessions/
 agent/settings.json
+
+node_modules/
