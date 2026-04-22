@@ -3,3 +3,4 @@ agent/sessions/
 agent/settings.json
 
 node_modules/
+scripts/.tokens-state.json

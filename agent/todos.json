@@ -1,4 +1,20 @@
 {
-  "todos": [],
-  "nextId": 1
+  "todos": [
+    {
+      "id": 1,
+      "text": "Create a README in this project",
+      "done": true
+    },
+    {
+      "id": 2,
+      "text": "[Pi] - create readme",
+      "done": true
+    },
+    {
+      "id": 3,
+      "text": "(Sereia Coded) Convert strings and other primitives into richer types",
+      "done": false
+    }
+  ],
+  "nextId": 4
 }

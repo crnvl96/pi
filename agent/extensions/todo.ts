@@ -23,14 +23,14 @@ interface Todo {
 }
 
 interface TodoDetails {
-  action: "list" | "add" | "toggle" | "clear";
+  action: "list" | "add" | "toggle" | "clear" | "flush";
   todos: Todo[];
   nextId: number;
   error?: string;
 }
 
 const TodoParams = Type.Object({
-  action: StringEnum(["list", "add", "toggle", "clear"] as const),
+  action: StringEnum(["list", "add", "toggle", "clear", "flush"] as const),
   text: Type.Optional(Type.String({ description: "Todo text (for add)" })),
   id: Type.Optional(Type.Number({ description: "Todo ID (for toggle)" })),
 });
@@ -151,7 +151,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "todo",
     label: "Todo",
-    description: "Manage a todo list. Actions: list, add (text), toggle (id), clear",
+    description: "Manage a todo list. Actions: list, add (text), toggle (id), clear completed, flush all",
     parameters: TodoParams,
 
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
@@ -227,13 +227,23 @@ export default function (pi: ExtensionAPI) {
         }
 
         case "clear": {
+          const completedCount = todos.filter((t) => t.done).length;
+          todos = todos.filter((t) => !t.done);
+          saveState();
+          return {
+            content: [{ type: "text", text: `Cleared ${completedCount} completed todo(s)` }],
+            details: { action: "clear", todos: [...todos], nextId } as TodoDetails,
+          };
+        }
+
+        case "flush": {
           const count = todos.length;
           todos = [];
           nextId = 1;
           saveState();
           return {
-            content: [{ type: "text", text: `Cleared ${count} todos` }],
-            details: { action: "clear", todos: [], nextId: 1 } as TodoDetails,
+            content: [{ type: "text", text: `Flushed ${count} todo(s)` }],
+            details: { action: "flush", todos: [], nextId: 1 } as TodoDetails,
           };
         }
 
@@ -307,7 +317,10 @@ export default function (pi: ExtensionAPI) {
         }
 
         case "clear":
-          return new Text(theme.fg("success", "+ ") + theme.fg("muted", "Cleared all todos"), 0, 0);
+          return new Text(theme.fg("success", "+ ") + theme.fg("muted", "Cleared completed todos"), 0, 0);
+
+        case "flush":
+          return new Text(theme.fg("success", "+ ") + theme.fg("muted", "Flushed all todos"), 0, 0);
       }
     },
   });

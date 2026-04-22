@@ -42,8 +42,8 @@ type SessionMessageEntry = {
 
 const rootDir = join(__dirname, "..");
 const sessionsDir = join(rootDir, "agent", "sessions");
-const outputFile = join(rootDir, "agents", "usage.json");
-const stateFile = join(rootDir, ".tokens-state.json");
+const outputFile = join(rootDir, "agent", "usage.json");
+const stateFile = join(rootDir, "scripts", ".tokens-state.json");
 
 function emptyCounts(): TokenCounts {
   return {
@@ -284,7 +284,10 @@ async function writeJsonAtomically(filePath: string, value: unknown): Promise<vo
   await rename(tempFile, filePath);
 }
 
-async function processFile(filePath: string, previousState?: FileState): Promise<{ mode: string; state: FileState }> {
+async function processFile(
+  filePath: string,
+  previousState?: FileState,
+): Promise<{ mode: string; state: FileState }> {
   const snapshot = await stat(filePath);
 
   if (
@@ -383,7 +386,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
   console.error(message);
   process.exitCode = 1;
 });

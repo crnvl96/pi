@@ -21,7 +21,7 @@ type CostCounts = TokenCounts & {
 };
 
 const rootDir = join(__dirname, "..");
-const tokensFile = join(rootDir, "agents", "usage.json");
+const tokensFile = join(rootDir, "agent", "usage.json");
 
 function asFiniteNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -161,7 +161,9 @@ async function main(): Promise<void> {
     ["cacheWrite", formatMillions(totalTokens.cacheWrite), formatDollars(totalCost.cacheWrite)],
     [
       "total",
-      formatMillions(totalTokens.read + totalTokens.write + totalTokens.cacheRead + totalTokens.cacheWrite),
+      formatMillions(
+        totalTokens.read + totalTokens.write + totalTokens.cacheRead + totalTokens.cacheWrite,
+      ),
       formatDollars(totalCost.total),
     ],
   ];
@@ -170,7 +172,7 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  const message = error instanceof Error ? error.stack ?? error.message : String(error);
+  const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
   console.error(message);
   process.exitCode = 1;
 });
