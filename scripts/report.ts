@@ -403,10 +403,6 @@ function formatMillions(value: number): string {
   return (value / 1_000_000).toFixed(3);
 }
 
-function formatInteger(value: number): string {
-  return Math.round(value).toLocaleString("en-US");
-}
-
 function formatDollars(value: number): string {
   return value.toFixed(4);
 }
@@ -469,11 +465,11 @@ function buildUsageRows(totals: UsageCounts): string[][] {
   const grandTotal = totals.input + totals.output + totals.cacheRead + totals.cacheWrite;
 
   return [
-    ["input", formatInteger(totals.input), formatMillions(totals.input)],
-    ["output", formatInteger(totals.output), formatMillions(totals.output)],
-    ["cache read", formatInteger(totals.cacheRead), formatMillions(totals.cacheRead)],
-    ["cache write", formatInteger(totals.cacheWrite), formatMillions(totals.cacheWrite)],
-    ["total", formatInteger(grandTotal), formatMillions(grandTotal)],
+    ["input", formatMillions(totals.input)],
+    ["output", formatMillions(totals.output)],
+    ["cache read", formatMillions(totals.cacheRead)],
+    ["cache write", formatMillions(totals.cacheWrite)],
+    ["total", formatMillions(grandTotal)],
   ];
 }
 
@@ -539,13 +535,7 @@ async function main(): Promise<void> {
   );
   console.log("");
   console.log("Usage");
-  console.log(
-    renderTable(["type", "tokens", "tokens (M)"], buildUsageRows(totals), [
-      "left",
-      "right",
-      "right",
-    ]),
-  );
+  console.log(renderTable(["type", "tokens (M)"], buildUsageRows(totals), ["left", "right"]));
 
   if (modelPresets.length === 0) {
     console.log("");
