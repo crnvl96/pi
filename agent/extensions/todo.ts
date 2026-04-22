@@ -1,16 +1,15 @@
 /**
- * Todo Extension - Global todos shared across all projects and branches.
+ * Todo Extension - Demonstrates state management via session entries
  *
  * This extension:
  * - Registers a `todo` tool for the LLM to manage todos
  * - Registers a `/todos` command for users to view the list
  *
- * State is stored in `~/.pi/agent/todos.json`.
- * That makes the todo list global, persistent, and branch agnostic.
+ * State is stored in tool result details (not external files), which allows
+ * proper branching - when you branch, the todo state is automatically
+ * correct for that point in history.
  */
 
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
 import { StringEnum } from "@mariozechner/pi-ai";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
 import { matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
@@ -23,18 +22,21 @@ interface Todo {
 }
 
 interface TodoDetails {
-  action: "list" | "add" | "toggle" | "clear" | "flush";
+  action: "list" | "add" | "toggle" | "clear";
   todos: Todo[];
   nextId: number;
   error?: string;
 }
 
 const TodoParams = Type.Object({
-  action: StringEnum(["list", "add", "toggle", "clear", "flush"] as const),
+  action: StringEnum(["list", "add", "toggle", "clear"] as const),
   text: Type.Optional(Type.String({ description: "Todo text (for add)" })),
   id: Type.Optional(Type.Number({ description: "Todo ID (for toggle)" })),
 });
 
+/**
+ * UI component for the /todos command
+ */
 class TodoListComponent {
   private todos: Todo[];
   private theme: Theme;
@@ -65,9 +67,9 @@ class TodoListComponent {
     lines.push("");
     const title = th.fg("accent", " Todos ");
     const headerLine =
-      th.fg("borderMuted", "-".repeat(3)) +
+      th.fg("borderMuted", "─".repeat(3)) +
       title +
-      th.fg("borderMuted", "-".repeat(Math.max(0, width - 10)));
+      th.fg("borderMuted", "─".repeat(Math.max(0, width - 10)));
     lines.push(truncateToWidth(headerLine, width));
     lines.push("");
 
@@ -82,7 +84,7 @@ class TodoListComponent {
       lines.push("");
 
       for (const todo of this.todos) {
-        const check = todo.done ? th.fg("success", "x") : th.fg("dim", "o");
+        const check = todo.done ? th.fg("success", "✓") : th.fg("dim", "○");
         const id = th.fg("accent", `#${todo.id}`);
         const text = todo.done ? th.fg("dim", todo.text) : th.fg("text", todo.text);
         lines.push(truncateToWidth(`  ${check} ${id} ${text}`, width));
@@ -105,58 +107,43 @@ class TodoListComponent {
 }
 
 export default function (pi: ExtensionAPI) {
+  // In-memory state (reconstructed from session on load)
   let todos: Todo[] = [];
   let nextId = 1;
-  const todoFile = join(process.env.HOME ?? ".", ".pi", "agent", "todos.json");
 
-  const loadState = () => {
+  /**
+   * Reconstruct state from session entries.
+   * Scans tool results for this tool and applies them in order.
+   */
+  const reconstructState = (ctx: ExtensionContext) => {
     todos = [];
     nextId = 1;
 
-    try {
-      const raw = readFileSync(todoFile, "utf8");
-      const parsed = JSON.parse(raw) as Partial<{ todos: unknown[]; nextId: number }>;
+    for (const entry of ctx.sessionManager.getBranch()) {
+      if (entry.type !== "message") continue;
+      const msg = entry.message;
+      if (msg.role !== "toolResult" || msg.toolName !== "todo") continue;
 
-      if (Array.isArray(parsed.todos)) {
-        todos = parsed.todos
-          .filter(
-            (todo): todo is Todo =>
-              typeof todo === "object" &&
-              todo !== null &&
-              typeof (todo as Todo).id === "number" &&
-              typeof (todo as Todo).text === "string" &&
-              typeof (todo as Todo).done === "boolean",
-          )
-          .map((todo) => ({ ...todo }));
+      const details = msg.details as TodoDetails | undefined;
+      if (details) {
+        todos = details.todos;
+        nextId = details.nextId;
       }
-
-      if (typeof parsed.nextId === "number" && parsed.nextId > 0) {
-        nextId = parsed.nextId;
-      } else if (todos.length > 0) {
-        nextId = Math.max(...todos.map((todo) => todo.id)) + 1;
-      }
-    } catch {
-      // Missing or invalid file - start fresh.
     }
   };
 
-  const saveState = () => {
-    mkdirSync(dirname(todoFile), { recursive: true });
-    writeFileSync(todoFile, JSON.stringify({ todos, nextId }, null, 2) + "\n", "utf8");
-  };
+  // Reconstruct state on session events
+  pi.on("session_start", async (_event, ctx) => reconstructState(ctx));
+  pi.on("session_tree", async (_event, ctx) => reconstructState(ctx));
 
-  pi.on("session_start", async () => loadState());
-  pi.on("session_tree", async () => loadState());
-
+  // Register the todo tool for the LLM
   pi.registerTool({
     name: "todo",
     label: "Todo",
-    description: "Manage a todo list. Actions: list, add (text), toggle (id), clear completed, flush all",
+    description: "Manage a todo list. Actions: list, add (text), toggle (id), clear",
     parameters: TodoParams,
 
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      loadState();
-
       switch (params.action) {
         case "list":
           return {
@@ -185,7 +172,6 @@ export default function (pi: ExtensionAPI) {
           }
           const newTodo: Todo = { id: nextId++, text: params.text, done: false };
           todos.push(newTodo);
-          saveState();
           return {
             content: [{ type: "text", text: `Added todo #${newTodo.id}: ${newTodo.text}` }],
             details: { action: "add", todos: [...todos], nextId } as TodoDetails,
@@ -217,7 +203,6 @@ export default function (pi: ExtensionAPI) {
             };
           }
           todo.done = !todo.done;
-          saveState();
           return {
             content: [
               { type: "text", text: `Todo #${todo.id} ${todo.done ? "completed" : "uncompleted"}` },
@@ -227,23 +212,12 @@ export default function (pi: ExtensionAPI) {
         }
 
         case "clear": {
-          const completedCount = todos.filter((t) => t.done).length;
-          todos = todos.filter((t) => !t.done);
-          saveState();
-          return {
-            content: [{ type: "text", text: `Cleared ${completedCount} completed todo(s)` }],
-            details: { action: "clear", todos: [...todos], nextId } as TodoDetails,
-          };
-        }
-
-        case "flush": {
           const count = todos.length;
           todos = [];
           nextId = 1;
-          saveState();
           return {
-            content: [{ type: "text", text: `Flushed ${count} todo(s)` }],
-            details: { action: "flush", todos: [], nextId: 1 } as TodoDetails,
+            content: [{ type: "text", text: `Cleared ${count} todos` }],
+            details: { action: "clear", todos: [], nextId: 1 } as TodoDetails,
           };
         }
 
@@ -288,7 +262,7 @@ export default function (pi: ExtensionAPI) {
           let listText = theme.fg("muted", `${todoList.length} todo(s):`);
           const display = expanded ? todoList : todoList.slice(0, 5);
           for (const t of display) {
-            const check = t.done ? theme.fg("success", "x") : theme.fg("dim", "o");
+            const check = t.done ? theme.fg("success", "✓") : theme.fg("dim", "○");
             const itemText = t.done ? theme.fg("dim", t.text) : theme.fg("muted", t.text);
             listText += `\n${check} ${theme.fg("accent", `#${t.id}`)} ${itemText}`;
           }
@@ -301,7 +275,7 @@ export default function (pi: ExtensionAPI) {
         case "add": {
           const added = todoList[todoList.length - 1];
           return new Text(
-            theme.fg("success", "+ Added ") +
+            theme.fg("success", "✓ Added ") +
               theme.fg("accent", `#${added.id}`) +
               " " +
               theme.fg("muted", added.text),
@@ -313,27 +287,23 @@ export default function (pi: ExtensionAPI) {
         case "toggle": {
           const text = result.content[0];
           const msg = text?.type === "text" ? text.text : "";
-          return new Text(theme.fg("success", "+ ") + theme.fg("muted", msg), 0, 0);
+          return new Text(theme.fg("success", "✓ ") + theme.fg("muted", msg), 0, 0);
         }
 
         case "clear":
-          return new Text(theme.fg("success", "+ ") + theme.fg("muted", "Cleared completed todos"), 0, 0);
-
-        case "flush":
-          return new Text(theme.fg("success", "+ ") + theme.fg("muted", "Flushed all todos"), 0, 0);
+          return new Text(theme.fg("success", "✓ ") + theme.fg("muted", "Cleared all todos"), 0, 0);
       }
     },
   });
 
+  // Register the /todos command for users
   pi.registerCommand("todos", {
-    description: "Show the global todo list",
+    description: "Show all todos on the current branch",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("/todos requires interactive mode", "error");
         return;
       }
-
-      loadState();
 
       await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
         return new TodoListComponent(todos, theme, () => done());
