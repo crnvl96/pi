@@ -1,19 +1,23 @@
 /**
- * Todo Extension - Demonstrates state management via session entries
+ * Todo Extension - Global todo list stored in ~/.pi/agent/todos.json.
  *
- * This extension:
- * - Registers a `todo` tool for the LLM to manage todos
- * - Registers a `/todos` command for users to view the list
- *
- * State is stored in tool result details (not external files), which allows
- * proper branching - when you branch, the todo state is automatically
- * correct for that point in history.
+ * State is loaded once per runtime, kept in memory for fast access, and
+ * persisted back to disk only when the list changes.
  */
 
 import { StringEnum } from "@mariozechner/pi-ai";
-import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
+import {
+  getAgentDir,
+  type ExtensionAPI,
+  type Theme,
+  withFileMutationQueue,
+} from "@mariozechner/pi-coding-agent";
 import { matchesKey, Text, truncateToWidth } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+
+type TodoAction = "list" | "add" | "toggle" | "clear";
 
 interface Todo {
   id: number;
@@ -21,10 +25,16 @@ interface Todo {
   done: boolean;
 }
 
-interface TodoDetails {
-  action: "list" | "add" | "toggle" | "clear";
-  todos: Todo[];
+interface TodoFileState {
   nextId: number;
+  todos: Todo[];
+}
+
+interface TodoDetails {
+  action: TodoAction;
+  todos?: Todo[];
+  todo?: Todo;
+  count?: number;
   error?: string;
 }
 
@@ -34,8 +44,124 @@ const TodoParams = Type.Object({
   id: Type.Optional(Type.Number({ description: "Todo ID (for toggle)" })),
 });
 
+const TODO_FILE_PATH = join(getAgentDir(), "todos.json");
+
+function cloneTodo(todo: Todo): Todo {
+  return { ...todo };
+}
+
+function cloneTodos(todos: Todo[]): Todo[] {
+  return todos.map(cloneTodo);
+}
+
+function createEmptyState(): TodoFileState {
+  return {
+    nextId: 1,
+    todos: [],
+  };
+}
+
+function isNodeError(value: unknown): value is { code?: string } {
+  return typeof value === "object" && value !== null && "code" in value;
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return String(error);
+}
+
+function normalizeState(value: unknown): TodoFileState {
+  if (!value || typeof value !== "object") {
+    return createEmptyState();
+  }
+
+  const input = value as {
+    nextId?: unknown;
+    todos?: unknown;
+  };
+
+  const todos: Todo[] = [];
+  if (Array.isArray(input.todos)) {
+    for (const item of input.todos) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+
+      const todo = item as {
+        id?: unknown;
+        text?: unknown;
+        done?: unknown;
+      };
+      const id = typeof todo.id === "number" ? todo.id : undefined;
+      const text = todo.text;
+      const done = todo.done;
+
+      if (!Number.isInteger(id) || id < 1) {
+        continue;
+      }
+      if (typeof text !== "string") {
+        continue;
+      }
+      if (typeof done !== "boolean") {
+        continue;
+      }
+
+      todos.push({ id, text, done });
+    }
+  }
+
+  const maxId = todos.reduce((currentMax, todo) => Math.max(currentMax, todo.id), 0);
+  const inputNextId = typeof input.nextId === "number" ? input.nextId : undefined;
+  const normalizedNextId =
+    Number.isInteger(inputNextId) && inputNextId > maxId ? inputNextId : maxId + 1;
+
+  return {
+    nextId: Math.max(1, normalizedNextId),
+    todos,
+  };
+}
+
+async function readStateFromDisk(): Promise<TodoFileState> {
+  try {
+    const content = await readFile(TODO_FILE_PATH, "utf8");
+    if (content.trim().length === 0) {
+      return createEmptyState();
+    }
+    return normalizeState(JSON.parse(content));
+  } catch (error) {
+    if (isNodeError(error) && error.code === "ENOENT") {
+      return createEmptyState();
+    }
+    throw error;
+  }
+}
+
+function serializeState(state: TodoFileState): string {
+  return JSON.stringify({
+    nextId: state.nextId,
+    todos: state.todos,
+  });
+}
+
+function formatTodoList(todos: Todo[]): string {
+  if (todos.length === 0) {
+    return "No todos";
+  }
+
+  return todos.map((todo) => `[${todo.done ? "x" : " "}] #${todo.id}: ${todo.text}`).join("\n");
+}
+
+function createErrorResult(action: TodoAction, error: string): { content: { type: "text"; text: string }[]; details: TodoDetails } {
+  return {
+    content: [{ type: "text", text: `Error: ${error}` }],
+    details: { action, error },
+  };
+}
+
 /**
- * UI component for the /todos command
+ * UI component for the /todos command.
  */
 class TodoListComponent {
   private todos: Todo[];
@@ -67,9 +193,9 @@ class TodoListComponent {
     lines.push("");
     const title = th.fg("accent", " Todos ");
     const headerLine =
-      th.fg("borderMuted", "─".repeat(3)) +
+      th.fg("borderMuted", "-".repeat(3)) +
       title +
-      th.fg("borderMuted", "─".repeat(Math.max(0, width - 10)));
+      th.fg("borderMuted", "-".repeat(Math.max(0, width - 10)));
     lines.push(truncateToWidth(headerLine, width));
     lines.push("");
 
@@ -78,13 +204,13 @@ class TodoListComponent {
         truncateToWidth(`  ${th.fg("dim", "No todos yet. Ask the agent to add some!")}`, width),
       );
     } else {
-      const done = this.todos.filter((t) => t.done).length;
+      const done = this.todos.filter((todo) => todo.done).length;
       const total = this.todos.length;
       lines.push(truncateToWidth(`  ${th.fg("muted", `${done}/${total} completed`)}`, width));
       lines.push("");
 
       for (const todo of this.todos) {
-        const check = todo.done ? th.fg("success", "✓") : th.fg("dim", "○");
+        const check = todo.done ? th.fg("success", "[x]") : th.fg("dim", "[ ]");
         const id = th.fg("accent", `#${todo.id}`);
         const text = todo.done ? th.fg("dim", todo.text) : th.fg("text", todo.text);
         lines.push(truncateToWidth(`  ${check} ${id} ${text}`, width));
@@ -107,130 +233,160 @@ class TodoListComponent {
 }
 
 export default function (pi: ExtensionAPI) {
-  // In-memory state (reconstructed from session on load)
   let todos: Todo[] = [];
   let nextId = 1;
+  let loadPromise: Promise<void> | undefined;
+  let mutationQueue: Promise<void> = Promise.resolve();
 
-  /**
-   * Reconstruct state from session entries.
-   * Scans tool results for this tool and applies them in order.
-   */
-  const reconstructState = (ctx: ExtensionContext) => {
-    todos = [];
-    nextId = 1;
-
-    for (const entry of ctx.sessionManager.getBranch()) {
-      if (entry.type !== "message") continue;
-      const msg = entry.message;
-      if (msg.role !== "toolResult" || msg.toolName !== "todo") continue;
-
-      const details = msg.details as TodoDetails | undefined;
-      if (details) {
-        todos = details.todos;
-        nextId = details.nextId;
-      }
+  const ensureLoaded = async () => {
+    if (!loadPromise) {
+      loadPromise = (async () => {
+        const state = await readStateFromDisk();
+        todos = state.todos;
+        nextId = state.nextId;
+      })().catch((error) => {
+        loadPromise = undefined;
+        throw error;
+      });
     }
+
+    await loadPromise;
   };
 
-  // Reconstruct state on session events
-  pi.on("session_start", async (_event, ctx) => reconstructState(ctx));
-  pi.on("session_tree", async (_event, ctx) => reconstructState(ctx));
+  const persistState = async () => {
+    const state: TodoFileState = {
+      nextId,
+      todos: cloneTodos(todos),
+    };
+    const serializedState = serializeState(state);
 
-  // Register the todo tool for the LLM
+    await withFileMutationQueue(TODO_FILE_PATH, async () => {
+      await mkdir(dirname(TODO_FILE_PATH), { recursive: true });
+      await writeFile(TODO_FILE_PATH, serializedState, "utf8");
+    });
+  };
+
+  const queueMutation = async <T>(fn: () => Promise<T>): Promise<T> => {
+    await ensureLoaded();
+
+    const run = mutationQueue.then(fn, fn);
+    mutationQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+
+    return run;
+  };
+
+  pi.on("session_start", async (_event, ctx) => {
+    try {
+      await ensureLoaded();
+    } catch (error) {
+      if (ctx.hasUI) {
+        ctx.ui.notify(`Failed to load ${TODO_FILE_PATH}: ${toErrorMessage(error)}`, "error");
+      }
+    }
+  });
+
   pi.registerTool({
     name: "todo",
     label: "Todo",
-    description: "Manage a todo list. Actions: list, add (text), toggle (id), clear",
+    description: "Manage the global todo list. Actions: list, add (text), toggle (id), clear",
     parameters: TodoParams,
 
-    async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      switch (params.action) {
-        case "list":
-          return {
-            content: [
-              {
-                type: "text",
-                text: todos.length
-                  ? todos.map((t) => `[${t.done ? "x" : " "}] #${t.id}: ${t.text}`).join("\n")
-                  : "No todos",
-              },
-            ],
-            details: { action: "list", todos: [...todos], nextId } as TodoDetails,
-          };
-
-        case "add": {
-          if (!params.text) {
+    async execute(_toolCallId, params) {
+      try {
+        switch (params.action) {
+          case "list": {
+            await ensureLoaded();
+            const todoList = cloneTodos(todos);
             return {
-              content: [{ type: "text", text: "Error: text required for add" }],
-              details: {
-                action: "add",
-                todos: [...todos],
-                nextId,
-                error: "text required",
-              } as TodoDetails,
+              content: [{ type: "text", text: formatTodoList(todoList) }],
+              details: { action: "list", todos: todoList } as TodoDetails,
             };
           }
-          const newTodo: Todo = { id: nextId++, text: params.text, done: false };
-          todos.push(newTodo);
-          return {
-            content: [{ type: "text", text: `Added todo #${newTodo.id}: ${newTodo.text}` }],
-            details: { action: "add", todos: [...todos], nextId } as TodoDetails,
-          };
-        }
 
-        case "toggle": {
-          if (params.id === undefined) {
-            return {
-              content: [{ type: "text", text: "Error: id required for toggle" }],
-              details: {
-                action: "toggle",
-                todos: [...todos],
-                nextId,
-                error: "id required",
-              } as TodoDetails,
-            };
+          case "add": {
+            if (!params.text) {
+              return createErrorResult("add", "text required");
+            }
+
+            return queueMutation(async () => {
+              const newTodo: Todo = { id: nextId++, text: params.text, done: false };
+              todos = [...todos, newTodo];
+              await persistState();
+              return {
+                content: [{ type: "text", text: `Added todo #${newTodo.id}: ${newTodo.text}` }],
+                details: { action: "add", todo: cloneTodo(newTodo) } as TodoDetails,
+              };
+            });
           }
-          const todo = todos.find((t) => t.id === params.id);
-          if (!todo) {
-            return {
-              content: [{ type: "text", text: `Todo #${params.id} not found` }],
-              details: {
-                action: "toggle",
-                todos: [...todos],
-                nextId,
-                error: `#${params.id} not found`,
-              } as TodoDetails,
-            };
+
+          case "toggle": {
+            if (params.id === undefined) {
+              return createErrorResult("toggle", "id required");
+            }
+
+            return queueMutation(async () => {
+              const index = todos.findIndex((todo) => todo.id === params.id);
+              if (index === -1) {
+                return createErrorResult("toggle", `#${params.id} not found`);
+              }
+
+              const existingTodo = todos[index];
+              if (!existingTodo) {
+                return createErrorResult("toggle", `#${params.id} not found`);
+              }
+
+              const toggledTodo: Todo = {
+                ...existingTodo,
+                done: !existingTodo.done,
+              };
+              const nextTodos = [...todos];
+              nextTodos[index] = toggledTodo;
+              todos = nextTodos;
+
+              await persistState();
+
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Todo #${toggledTodo.id} ${toggledTodo.done ? "completed" : "uncompleted"}`,
+                  },
+                ],
+                details: { action: "toggle", todo: cloneTodo(toggledTodo) } as TodoDetails,
+              };
+            });
           }
-          todo.done = !todo.done;
-          return {
-            content: [
-              { type: "text", text: `Todo #${todo.id} ${todo.done ? "completed" : "uncompleted"}` },
-            ],
-            details: { action: "toggle", todos: [...todos], nextId } as TodoDetails,
-          };
+
+          case "clear": {
+            return queueMutation(async () => {
+              const count = todos.length;
+              todos = [];
+              nextId = 1;
+              await persistState();
+              return {
+                content: [{ type: "text", text: `Cleared ${count} todos` }],
+                details: { action: "clear", count } as TodoDetails,
+              };
+            });
+          }
+
+          default:
+            return createErrorResult("list", `unknown action: ${params.action}`);
+        }
+      } catch (error) {
+        try {
+          const state = await readStateFromDisk();
+          todos = state.todos;
+          nextId = state.nextId;
+          loadPromise = Promise.resolve();
+        } catch {
+          // Ignore reload failures here and surface the original error below.
         }
 
-        case "clear": {
-          const count = todos.length;
-          todos = [];
-          nextId = 1;
-          return {
-            content: [{ type: "text", text: `Cleared ${count} todos` }],
-            details: { action: "clear", todos: [], nextId: 1 } as TodoDetails,
-          };
-        }
-
-        default:
-          return {
-            content: [{ type: "text", text: `Unknown action: ${params.action}` }],
-            details: {
-              action: "list",
-              todos: [...todos],
-              nextId,
-              error: `unknown action: ${params.action}`,
-            } as TodoDetails,
-          };
+        return createErrorResult(params.action, toErrorMessage(error));
       }
     },
 
@@ -252,19 +408,19 @@ export default function (pi: ExtensionAPI) {
         return new Text(theme.fg("error", `Error: ${details.error}`), 0, 0);
       }
 
-      const todoList = details.todos;
-
       switch (details.action) {
         case "list": {
+          const todoList = details.todos ?? [];
           if (todoList.length === 0) {
             return new Text(theme.fg("dim", "No todos"), 0, 0);
           }
+
           let listText = theme.fg("muted", `${todoList.length} todo(s):`);
           const display = expanded ? todoList : todoList.slice(0, 5);
-          for (const t of display) {
-            const check = t.done ? theme.fg("success", "✓") : theme.fg("dim", "○");
-            const itemText = t.done ? theme.fg("dim", t.text) : theme.fg("muted", t.text);
-            listText += `\n${check} ${theme.fg("accent", `#${t.id}`)} ${itemText}`;
+          for (const todo of display) {
+            const check = todo.done ? theme.fg("success", "[x]") : theme.fg("dim", "[ ]");
+            const itemText = todo.done ? theme.fg("dim", todo.text) : theme.fg("muted", todo.text);
+            listText += `\n${check} ${theme.fg("accent", `#${todo.id}`)} ${itemText}`;
           }
           if (!expanded && todoList.length > 5) {
             listText += `\n${theme.fg("dim", `... ${todoList.length - 5} more`)}`;
@@ -273,12 +429,16 @@ export default function (pi: ExtensionAPI) {
         }
 
         case "add": {
-          const added = todoList[todoList.length - 1];
+          const addedTodo = details.todo;
+          if (!addedTodo) {
+            return new Text(theme.fg("success", "[ok] Added todo"), 0, 0);
+          }
+
           return new Text(
-            theme.fg("success", "✓ Added ") +
-              theme.fg("accent", `#${added.id}`) +
+            theme.fg("success", "[ok] Added ") +
+              theme.fg("accent", `#${addedTodo.id}`) +
               " " +
-              theme.fg("muted", added.text),
+              theme.fg("muted", addedTodo.text),
             0,
             0,
           );
@@ -286,27 +446,40 @@ export default function (pi: ExtensionAPI) {
 
         case "toggle": {
           const text = result.content[0];
-          const msg = text?.type === "text" ? text.text : "";
-          return new Text(theme.fg("success", "✓ ") + theme.fg("muted", msg), 0, 0);
+          const message = text?.type === "text" ? text.text : "Updated todo";
+          return new Text(theme.fg("success", "[ok] ") + theme.fg("muted", message), 0, 0);
         }
 
-        case "clear":
-          return new Text(theme.fg("success", "✓ ") + theme.fg("muted", "Cleared all todos"), 0, 0);
+        case "clear": {
+          const count = details.count ?? 0;
+          return new Text(
+            theme.fg("success", "[ok] ") + theme.fg("muted", `Cleared ${count} todo(s)`),
+            0,
+            0,
+          );
+        }
       }
     },
   });
 
-  // Register the /todos command for users
   pi.registerCommand("todos", {
-    description: "Show all todos on the current branch",
+    description: "Show the global todo list",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("/todos requires interactive mode", "error");
         return;
       }
 
+      try {
+        await ensureLoaded();
+      } catch (error) {
+        ctx.ui.notify(`Failed to load ${TODO_FILE_PATH}: ${toErrorMessage(error)}`, "error");
+        return;
+      }
+
+      const todoList = cloneTodos(todos);
       await ctx.ui.custom<void>((_tui, theme, _kb, done) => {
-        return new TodoListComponent(todos, theme, () => done());
+        return new TodoListComponent(todoList, theme, () => done());
       });
     },
   });
