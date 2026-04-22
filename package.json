@@ -1,0 +1,10 @@
+{
+  "name": "pi-config",
+  "private": true,
+  "type": "module",
+  "scripts": {},
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "^0.68.1",
+    "@perplexity-ai/perplexity_ai": "^0.27.0"
+  }
+}

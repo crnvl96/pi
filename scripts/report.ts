@@ -50,7 +50,7 @@ type SessionMessageEntry = {
 
 const rootDir = join(__dirname, "..");
 const sessionsDir = join(rootDir, "agent", "sessions");
-const stateFile = join(rootDir, "scripts", ".tokens-state.json");
+const stateFile = join(rootDir, ".tokens-state.json");
 
 // Prices are in USD per 1M tokens. Update these presets as needed.
 const modelPresets: ModelPreset[] = [
