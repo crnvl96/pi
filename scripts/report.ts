@@ -5,14 +5,18 @@ const { mkdir, readdir, readFile, rename, stat, writeFile } = require("node:fs/p
 const { dirname, join, relative } = require("node:path");
 const { createInterface } = require("node:readline");
 
-type TokenCounts = {
-  read: number;
-  write: number;
+type UsageCounts = {
+  input: number;
+  output: number;
   cacheRead: number;
   cacheWrite: number;
 };
 
-type TotalsByDate = Record<string, TokenCounts>;
+type CostCounts = UsageCounts & {
+  total: number;
+};
+
+type TotalsByDate = Record<string, UsageCounts>;
 
 type FileState = {
   size: number;
@@ -21,8 +25,12 @@ type FileState = {
 };
 
 type UsageState = {
-  version: 1;
+  version: 2;
   files: Record<string, FileState>;
+};
+
+type ModelPreset = UsageCounts & {
+  name: string;
 };
 
 type SessionMessageEntry = {
@@ -42,34 +50,89 @@ type SessionMessageEntry = {
 
 const rootDir = join(__dirname, "..");
 const sessionsDir = join(rootDir, "agent", "sessions");
-const outputFile = join(rootDir, "agent", "usage.json");
 const stateFile = join(rootDir, "scripts", ".tokens-state.json");
 
-function emptyCounts(): TokenCounts {
-  return {
-    read: 0,
-    write: 0,
-    cacheRead: 0,
+// Prices are in USD per 1M tokens. Update these presets as needed.
+const modelPresets: ModelPreset[] = [
+  {
+    name: "Kimi 2.6",
+    input: 0.8,
+    output: 3.5,
+    cacheRead: 0.2,
     cacheWrite: 0,
-  };
-}
+  },
+  {
+    name: "GLM 5.1",
+    input: 1.06,
+    output: 4.4,
+    cacheRead: 0.26,
+    cacheWrite: 0.0,
+  },
+  {
+    name: "Opus 4.7",
+    input: 5,
+    output: 25,
+    cacheRead: 0.5,
+    cacheWrite: 0.0,
+  },
+  {
+    name: "GPT 5.4",
+    input: 5,
+    output: 15,
+    cacheRead: 0.25,
+    cacheWrite: 0.0,
+  },
+  {
+    name: "Gemini 3.1 Pro Preview",
+    input: 2,
+    output: 12,
+    cacheRead: 0.2,
+    cacheWrite: 0.375,
+  },
+];
 
 function asFiniteNumber(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
-function cloneCounts(counts?: Partial<TokenCounts>): TokenCounts {
+function emptyCounts(): UsageCounts {
   return {
-    read: asFiniteNumber(counts?.read),
-    write: asFiniteNumber(counts?.write),
-    cacheRead: asFiniteNumber(counts?.cacheRead),
-    cacheWrite: asFiniteNumber(counts?.cacheWrite),
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
   };
 }
 
-function addCounts(target: TokenCounts, source: Partial<TokenCounts>): void {
-  target.read += asFiniteNumber(source.read);
-  target.write += asFiniteNumber(source.write);
+function normalizeCounts(value: unknown): UsageCounts {
+  if (!value || typeof value !== "object") {
+    return emptyCounts();
+  }
+
+  const counts = value as {
+    input?: unknown;
+    output?: unknown;
+    read?: unknown;
+    write?: unknown;
+    cacheRead?: unknown;
+    cacheWrite?: unknown;
+  };
+
+  return {
+    input: asFiniteNumber(counts.input ?? counts.read),
+    output: asFiniteNumber(counts.output ?? counts.write),
+    cacheRead: asFiniteNumber(counts.cacheRead),
+    cacheWrite: asFiniteNumber(counts.cacheWrite),
+  };
+}
+
+function cloneCounts(counts?: unknown): UsageCounts {
+  return normalizeCounts(counts);
+}
+
+function addCounts(target: UsageCounts, source: Partial<UsageCounts>): void {
+  target.input += asFiniteNumber(source.input);
+  target.output += asFiniteNumber(source.output);
   target.cacheRead += asFiniteNumber(source.cacheRead);
   target.cacheWrite += asFiniteNumber(source.cacheWrite);
 }
@@ -84,7 +147,7 @@ function normalizeTotals(value: unknown): TotalsByDate {
     if (typeof date !== "string") {
       continue;
     }
-    totals[date] = cloneCounts(counts as Partial<TokenCounts>);
+    totals[date] = cloneCounts(counts);
   }
 
   return sortTotalsByDate(totals);
@@ -143,8 +206,8 @@ function addEntryUsage(totals: TotalsByDate, entry: SessionMessageEntry): void {
 
   const dateKey = toDateKey(timestamp);
   const counts = totals[dateKey] ?? emptyCounts();
-  counts.read += asFiniteNumber(usage.input);
-  counts.write += asFiniteNumber(usage.output);
+  counts.input += asFiniteNumber(usage.input);
+  counts.output += asFiniteNumber(usage.output);
   counts.cacheRead += asFiniteNumber(usage.cacheRead);
   counts.cacheWrite += asFiniteNumber(usage.cacheWrite);
   totals[dateKey] = counts;
@@ -256,21 +319,21 @@ async function loadState(): Promise<UsageState> {
     }
 
     return {
-      version: 1,
+      version: 2,
       files: normalizedFiles,
     };
   } catch (error) {
     const maybeError = error as NodeJS.ErrnoException;
     if (maybeError.code === "ENOENT") {
       return {
-        version: 1,
+        version: 2,
         files: {},
       };
     }
 
-    console.warn(`[token_usage] Ignoring unreadable state file: ${stateFile}`);
+    console.warn(`[usage_report] Ignoring unreadable state file: ${stateFile}`);
     return {
-      version: 1,
+      version: 2,
       files: {},
     };
   }
@@ -336,6 +399,98 @@ async function processFile(
   };
 }
 
+function formatMillions(value: number): string {
+  return (value / 1_000_000).toFixed(3);
+}
+
+function formatInteger(value: number): string {
+  return Math.round(value).toLocaleString("en-US");
+}
+
+function formatDollars(value: number): string {
+  return value.toFixed(4);
+}
+
+function padCell(value: string, width: number, align: "left" | "right"): string {
+  return align === "right" ? value.padStart(width, " ") : value.padEnd(width, " ");
+}
+
+function renderTable(
+  headers: string[],
+  rows: string[][],
+  alignments: Array<"left" | "right">,
+): string {
+  const widths = headers.map((header) => header.length);
+
+  for (const row of rows) {
+    for (const [index, value] of row.entries()) {
+      widths[index] = Math.max(widths[index], value.length);
+    }
+  }
+
+  const border = `+-${widths.map((width) => "-".repeat(width)).join("-+-")}-+`;
+  const line = (row: string[], isHeader = false): string => {
+    const cells = row.map((value, index) => {
+      const align = isHeader ? "left" : (alignments[index] ?? "left");
+      return padCell(value, widths[index], align);
+    });
+    return `| ${cells.join(" | ")} |`;
+  };
+
+  return [border, line(headers, true), border, ...rows.map((row) => line(row)), border].join("\n");
+}
+
+function flattenTotals(totalsByDate: TotalsByDate): UsageCounts {
+  const totals = emptyCounts();
+
+  for (const counts of Object.values(totalsByDate)) {
+    addCounts(totals, counts);
+  }
+
+  return totals;
+}
+
+function computeCost(tokens: UsageCounts, prices: UsageCounts): CostCounts {
+  const input = (tokens.input / 1_000_000) * prices.input;
+  const output = (tokens.output / 1_000_000) * prices.output;
+  const cacheRead = (tokens.cacheRead / 1_000_000) * prices.cacheRead;
+  const cacheWrite = (tokens.cacheWrite / 1_000_000) * prices.cacheWrite;
+
+  return {
+    input,
+    output,
+    cacheRead,
+    cacheWrite,
+    total: input + output + cacheRead + cacheWrite,
+  };
+}
+
+function buildUsageRows(totals: UsageCounts): string[][] {
+  const grandTotal = totals.input + totals.output + totals.cacheRead + totals.cacheWrite;
+
+  return [
+    ["input", formatInteger(totals.input), formatMillions(totals.input)],
+    ["output", formatInteger(totals.output), formatMillions(totals.output)],
+    ["cache read", formatInteger(totals.cacheRead), formatMillions(totals.cacheRead)],
+    ["cache write", formatInteger(totals.cacheWrite), formatMillions(totals.cacheWrite)],
+    ["total", formatInteger(grandTotal), formatMillions(grandTotal)],
+  ];
+}
+
+function buildCostRows(totals: UsageCounts, presets: ModelPreset[]): string[][] {
+  return presets.map((preset) => {
+    const cost = computeCost(totals, preset);
+    return [
+      preset.name,
+      formatDollars(cost.input),
+      formatDollars(cost.output),
+      formatDollars(cost.cacheRead),
+      formatDollars(cost.cacheWrite),
+      formatDollars(cost.total),
+    ];
+  });
+}
+
 async function main(): Promise<void> {
   const previousState = await loadState();
   const files = await listSessionFiles(sessionsDir);
@@ -371,17 +526,41 @@ async function main(): Promise<void> {
   }
 
   const nextState: UsageState = {
-    version: 1,
+    version: 2,
     files: nextFiles,
   };
-  const totals = combineTotals(nextFiles);
+  const totalsByDate = combineTotals(nextFiles);
+  const totals = flattenTotals(totalsByDate);
 
   await writeJsonAtomically(stateFile, nextState);
-  await writeJsonAtomically(outputFile, totals);
 
-  console.log(`Wrote ${outputFile}`);
   console.log(
     `files=${files.length} skipped=${skipped} incremental=${incremental} rescanned=${rescanned} new=${newFiles} removed=${removed}`,
+  );
+  console.log("");
+  console.log("Usage");
+  console.log(
+    renderTable(["type", "tokens", "tokens (M)"], buildUsageRows(totals), [
+      "left",
+      "right",
+      "right",
+    ]),
+  );
+
+  if (modelPresets.length === 0) {
+    console.log("");
+    console.log("No model presets configured.");
+    return;
+  }
+
+  console.log("");
+  console.log("Cost by model preset");
+  console.log(
+    renderTable(
+      ["model", "input ($)", "output ($)", "cache read ($)", "cache write ($)", "total ($)"],
+      buildCostRows(totals, modelPresets),
+      ["left", "right", "right", "right", "right", "right"],
+    ),
   );
 }
 
