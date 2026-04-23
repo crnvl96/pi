@@ -40,7 +40,6 @@ function readApiKey(): string {
 }
 
 let client: Perplexity | undefined;
-
 function getClient(): Perplexity {
   if (!client) {
     client = new Perplexity({
@@ -57,13 +56,13 @@ function getClient(): Perplexity {
 }
 
 function normalizeUrl(input: string): string {
+  let url: URL;
   const urlText = input.trim();
 
   if (!urlText) {
     throw new Error("url must not be empty");
   }
 
-  let url: URL;
   try {
     url = new URL(urlText);
   } catch {
@@ -154,9 +153,7 @@ export default function (pi: ExtensionAPI) {
       "Prefer this tool over general web search when the target URL is already known.",
       "Pass the exact URL the user wants fetched.",
     ],
-    parameters: Type.Object({
-      url: Type.String({ description: "The full http(s) URL to fetch" }),
-    }),
+    parameters: Type.Object({ url: Type.String({ description: "The full http(s) URL to fetch" }) }),
     execute: async (_toolCallId, params, signal) => {
       const url = normalizeUrl(params.url);
 
@@ -178,6 +175,7 @@ export default function (pi: ExtensionAPI) {
 
       if (pages.length === 0) {
         const outputText = result.output_text?.trim();
+
         if (outputText) {
           throw new Error(
             `Perplexity did not return fetched page content. Model response: ${outputText}`,
@@ -259,8 +257,7 @@ export default function (pi: ExtensionAPI) {
     },
     renderCall(args, theme, _context) {
       return new Text(
-        theme.fg("toolTitle", theme.bold("perplexity_web_search ")) +
-          theme.fg("accent", `"${args.query}"`),
+        theme.fg("toolTitle", theme.bold("web_search ")) + theme.fg("accent", `"${args.query}"`),
         0,
         0,
       );

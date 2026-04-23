@@ -1,11 +1,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 type MsgLvl = "info" | "warning" | "error";
-type Ctx = {
-  ui: {
-    notify: (message: string, type?: MsgLvl) => void;
-  };
-};
+type Ctx = { ui: { notify: (message: string, type?: MsgLvl) => void } };
 
 export default function (pi: ExtensionAPI) {
   const setOrShowSessionName = async (name: string, ctx: Ctx) => {
