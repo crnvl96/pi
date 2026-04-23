@@ -1,7 +1,3 @@
-/**
- * Protection agains dangerous/destructive commands
- */
-
 import { isToolCallEventType, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 type DangerousPattern = {

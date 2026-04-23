@@ -1,33 +1,7 @@
 /*
-# Perplexity Search pi extension
-
-This extension adds a `perplexity_web_search` tool to pi.
-
 ## Auth
 
 Set `PERPLEXITY_API_KEY` in your environment.
-
-## Optional configuration
-
-- `PERPLEXITY_MAX_RETRIES` - SDK retry count, default `3`
-- `PERPLEXITY_TIMEOUT` - request timeout in milliseconds, default `30000`
-- `PERPLEXITY_MAX_RESULTS` - number of search results to return, default `5`
-- `PERPLEXITY_MAX_TOKENS` - total extracted content budget across results, default `20000`
-- `PERPLEXITY_MAX_TOKENS_PER_PAGE` - extracted content budget per result, default `4096`
-
-## Tool
-
-`perplexity_web_search`
-
-Use it to search the web with the Perplexity Search API.
-
-## Notes
-
-- This extension uses the official Perplexity TypeScript SDK.
-- It calls the Perplexity Search API via `client.search.create()`.
-- Search results include extracted page content in the `snippet` field.
-- Tool output is returned in full without extension-level truncation.
-- The default tool result renderer is used so the returned text is visible in chat.
 */
 
 import Perplexity from "@perplexity-ai/perplexity_ai";
@@ -101,7 +75,7 @@ function formatSearchContext(query: string, pages: ApiSearchPage[]): string {
 
 export default function perplexitySearchExtension(pi: ExtensionAPI) {
   pi.registerTool({
-    name: "perplexity_web_search",
+    name: "web_search",
     label: "Perplexity Web Search",
     description:
       "Search the web using the Perplexity Search API via the official SDK and return ranked results with extracted page content.",
