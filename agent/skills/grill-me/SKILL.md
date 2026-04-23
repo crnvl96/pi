@@ -1,10 +1,15 @@
 ---
 name: grill-me
-description: Interview the user relentlessly about a plan or design until reaching shared understanding, resolving each branch of the decision tree. Use when user wants to stress-test a plan, get grilled on their design, or mentions "grill me".
+description: Stress-test a plan or design through a one-question-at-a-time interview until the key decisions and tradeoffs are understood. Use when the user wants to be grilled on a plan, design, or architecture.
 ---
 
-Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+# Grill Me
 
-Ask the questions one at a time.
+Use this skill to interrogate a plan or design until the important decisions, dependencies, and tradeoffs are clear.
 
-If a question can be answered by exploring the codebase, explore the codebase instead.
+## Workflow
+
+1. Ask one question at a time.
+2. For each question, provide your recommended answer.
+3. Walk down each branch of the decision tree until the open decisions are resolved.
+4. If a question can be answered by exploring the codebase, explore the codebase instead of asking.
