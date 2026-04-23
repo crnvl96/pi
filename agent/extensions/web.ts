@@ -137,12 +137,13 @@ function formatSearchResult(page: ApiSearchPage, index: number): string {
 }
 
 function formatSearchContext(query: string, pages: ApiSearchPage[]): string {
-  const renderedResults = pages.length > 0 ? pages.map(formatSearchResult).join("\n\n") : "No results returned.";
+  const renderedResults =
+    pages.length > 0 ? pages.map(formatSearchResult).join("\n\n") : "No results returned.";
 
   return `Perplexity web search context for: ${query}\n\nUse the numbered results below as external context and cite URLs when relevant.\nThe page extract text comes from Perplexity Search API snippet extraction, not a separate browser fetch performed by this tool.\n\n${renderedResults}`;
 }
 
-export default function perplexityWebExtension(pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "web_fetch",
     label: "Perplexity Web Fetch",
