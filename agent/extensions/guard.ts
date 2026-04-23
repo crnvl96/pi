@@ -35,6 +35,7 @@ export default function guardExtension(pi: ExtensionAPI) {
 
     const command = String(event.input.command ?? "");
     const match = dangerousPatterns.find(({ pattern }) => pattern.test(command));
+
     if (!match) {
       return undefined;
     }
@@ -50,6 +51,7 @@ export default function guardExtension(pi: ExtensionAPI) {
       "Dangerous command",
       `${command}\n\nDetected: ${match.label}\n\nAllow execution?`,
     );
+
     if (!allowed) {
       return { block: true, reason: `Blocked by user: ${match.label}` };
     }

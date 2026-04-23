@@ -41,6 +41,12 @@ import { Type } from "typebox";
 
 type ApiSearchPage = SearchCreateResponse.Result;
 
+const DEFAULT_MAX_RETRIES = 3;
+const DEFAULT_TIMEOUT_MS = 30000;
+const DEFAULT_MAX_RESULTS = 5;
+const DEFAULT_MAX_TOKENS = 20000;
+const DEFAULT_MAX_TOKENS_PER_PAGE = 4096;
+
 function readApiKey(): string {
   const apiKey = process.env.PERPLEXITY_API_KEY?.trim();
   if (apiKey) {
@@ -49,26 +55,6 @@ function readApiKey(): string {
 
   throw new Error("Missing Perplexity API key. Set PERPLEXITY_API_KEY in the environment.");
 }
-
-function readPositiveIntEnv(name: string, fallback: number): number {
-  const rawValue = process.env[name]?.trim();
-  if (!rawValue) {
-    return fallback;
-  }
-
-  const value = Number.parseInt(rawValue, 10);
-  if (!Number.isFinite(value) || value <= 0) {
-    throw new Error(`${name} must be a positive integer when set.`);
-  }
-
-  return value;
-}
-
-const DEFAULT_MAX_RETRIES = readPositiveIntEnv("PERPLEXITY_MAX_RETRIES", 3);
-const DEFAULT_TIMEOUT_MS = readPositiveIntEnv("PERPLEXITY_TIMEOUT", 30000);
-const DEFAULT_MAX_RESULTS = readPositiveIntEnv("PERPLEXITY_MAX_RESULTS", 5);
-const DEFAULT_MAX_TOKENS = readPositiveIntEnv("PERPLEXITY_MAX_TOKENS", 20000);
-const DEFAULT_MAX_TOKENS_PER_PAGE = readPositiveIntEnv("PERPLEXITY_MAX_TOKENS_PER_PAGE", 4096);
 
 let client: Perplexity | undefined;
 
