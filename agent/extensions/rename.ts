@@ -22,7 +22,7 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
-  pi.registerShortcut("ctrl+r", {
+  pi.registerShortcut("ctrl+shift+r", {
     description: "Rename session",
     handler: async (ctx) => {
       const current = pi.getSessionName();
