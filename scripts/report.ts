@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-const { createReadStream } = require("node:fs");
-const { mkdir, readdir, readFile, rename, stat, writeFile } = require("node:fs/promises");
-const { dirname, join, relative } = require("node:path");
-const { createInterface } = require("node:readline");
+import { createReadStream } from "node:fs";
+import { mkdir, readdir, readFile, rename, stat, writeFile } from "node:fs/promises";
+import { dirname, join, relative } from "node:path";
+import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
 
 type UsageCounts = {
   input: number;
@@ -48,7 +49,8 @@ type SessionMessageEntry = {
   };
 };
 
-const rootDir = join(__dirname, "..");
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const rootDir = join(scriptDir, "..");
 const sessionsDir = join(rootDir, "agent", "sessions");
 const stateFile = join(rootDir, ".tokens-state.json");
 

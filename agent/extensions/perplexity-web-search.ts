@@ -37,7 +37,7 @@ import type {
 } from "@perplexity-ai/perplexity_ai/resources/search";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import { Type } from "@sinclair/typebox";
+import { Type } from "typebox";
 
 type ApiSearchPage = SearchCreateResponse.Result;
 
@@ -155,6 +155,10 @@ export default function perplexitySearchExtension(pi: ExtensionAPI) {
             text: formatSearchContext(query, result.results),
           },
         ],
+        details: {
+          query,
+          resultCount: result.results.length,
+        },
       };
     },
     renderCall(args, theme, _context) {
