@@ -5,6 +5,7 @@ import {
   Key,
   Text,
   matchesKey,
+  truncateToWidth,
   wrapTextWithAnsi,
 } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
@@ -45,7 +46,7 @@ export interface QuestionnaireResult {
   cancelled: boolean;
 }
 
-type RenderOption = QuestionOption & { isOther?: boolean };
+type RenderOption = QuestionOption & { isOther?: boolean; isRecommended?: boolean };
 
 const QuestionOptionSchema = Type.Object({
   value: Type.String({ description: "The value returned when selected" }),
@@ -106,6 +107,15 @@ function pushWrappedLine(lines: string[], width: number, text: string, indent = 
   }
 }
 
+function pushLine(lines: string[], width: number, text: string): void {
+  lines.push(truncateToWidth(text, Math.max(1, width)));
+}
+
+function getQuestionNumber(question: Question, fallbackIndex: number): string {
+  const match = question.label.match(/\d+/);
+  return match ? match[0] : String(fallbackIndex + 1);
+}
+
 export async function runQuestionnaire(
   ctx: ExtensionContext,
   inputQuestions: QuestionInput[],
@@ -158,7 +168,10 @@ export async function runQuestionnaire(
       if (!question) {
         return [];
       }
-      const options: RenderOption[] = [...question.options];
+      const options: RenderOption[] = question.options.map((option, index) => ({
+        ...option,
+        isRecommended: index === 0,
+      }));
       if (question.allowOther) {
         options.push({ value: "__other__", label: "Type something", isOther: true });
       }
@@ -290,25 +303,36 @@ export async function runQuestionnaire(
       const question = currentQuestion();
       const options = currentOptions();
       const border = theme.fg("accent", "-".repeat(Math.max(1, width)));
+      const addLine = (text: string) => pushLine(lines, width, text);
       const addWrapped = (text: string, indent = "") => pushWrappedLine(lines, width, text, indent);
 
       lines.push(border);
 
       if (isMulti) {
-        const tabParts: string[] = [];
+        const tabs: string[] = [];
         for (let i = 0; i < questions.length; i++) {
           const current = questions[i]!;
-          const answered = answers.has(current.id) ? "[x]" : "[ ]";
-          const label = `${answered} ${current.label}`;
-          tabParts.push(
-            i === currentTab ? theme.fg("accent", `>${label}<`) : theme.fg("muted", label),
-          );
+          const answered = answers.has(current.id);
+          const text = ` ${answered ? "[x]" : "[ ]"} ${current.label} `;
+          const styled =
+            i === currentTab
+              ? theme.bg("selectedBg", theme.fg("text", text))
+              : theme.fg(answered ? "success" : "muted", text);
+          tabs.push(styled);
         }
-        const submitLabel =
+        const submitText = " Submit ";
+        const submitStyled =
           currentTab === questions.length
-            ? theme.fg("accent", ">Submit<")
-            : theme.fg(allAnswered() ? "success" : "dim", "Submit");
-        addWrapped(`Tabs: ${tabParts.join(" | ")} | ${submitLabel}`);
+            ? theme.bg("selectedBg", theme.fg("text", submitText))
+            : theme.fg(allAnswered() ? "success" : "dim", submitText);
+        addLine(` ${tabs.join(" ")} ${submitStyled}`);
+        lines.push("");
+      }
+
+      function renderQuestionHeader(current: Question): void {
+        const number = getQuestionNumber(current, currentTab);
+        addLine(theme.fg("accent", theme.bold(` Question #${number}`)));
+        addWrapped(theme.fg("text", ` ${current.prompt}`));
         lines.push("");
       }
 
@@ -317,8 +341,15 @@ export async function runQuestionnaire(
           const option = options[i]!;
           const selected = i === optionIndex;
           const prefix = selected ? theme.fg("accent", "> ") : "  ";
-          const label = `${i + 1}. ${option.label}`;
-          addWrapped(prefix + (selected ? theme.fg("accent", label) : theme.fg("text", label)));
+          let label = `${i + 1}. ${option.label}`;
+          if (option.isOther && inputMode) {
+            label += " [editing]";
+          }
+          const styledLabel = selected ? theme.fg("accent", label) : theme.fg("text", label);
+          const recommended = option.isRecommended
+            ? ` ${theme.fg("success", "[recommended]")}`
+            : "";
+          addWrapped(`${prefix}${styledLabel}${recommended}`);
           if (option.description) {
             addWrapped(theme.fg("muted", option.description), "     ");
           }
@@ -326,19 +357,17 @@ export async function runQuestionnaire(
       }
 
       if (inputMode && question) {
-        addWrapped(theme.fg("text", question.prompt));
-        lines.push("");
+        renderQuestionHeader(question);
         renderOptions();
         lines.push("");
-        addWrapped(theme.fg("muted", "Your answer:"));
-        const editorWidth = Math.max(1, width - 2);
-        for (const line of editor.render(editorWidth)) {
-          lines.push(` ${line}`);
+        addLine(theme.fg("muted", " Your answer"));
+        for (const line of editor.render(Math.max(1, width - 2))) {
+          addLine(` ${line}`);
         }
         lines.push("");
-        addWrapped(theme.fg("dim", "Enter to submit | Esc to cancel"));
+        addLine(theme.fg("dim", " Enter to submit | Esc to cancel"));
       } else if (currentTab === questions.length) {
-        addWrapped(theme.fg("accent", theme.bold("Ready to submit")));
+        addLine(theme.fg("accent", theme.bold(" Ready to submit")));
         lines.push("");
         for (const current of questions) {
           const answer = answers.get(current.id);
@@ -347,31 +376,30 @@ export async function runQuestionnaire(
           }
           const prefix = answer.wasCustom ? "(wrote) " : "";
           addWrapped(
-            `${theme.fg("muted", `${current.label}: `)}${theme.fg("text", `${prefix}${answer.label}`)}`,
+            `${theme.fg("muted", ` ${current.label}: `)}${theme.fg("text", `${prefix}${answer.label}`)}`,
           );
         }
         lines.push("");
         if (allAnswered()) {
-          addWrapped(theme.fg("success", "Press Enter to submit"));
+          addLine(theme.fg("success", " Press Enter to submit"));
         } else {
           const missing = questions
             .filter((current) => !answers.has(current.id))
             .map((current) => current.label)
             .join(", ");
-          addWrapped(theme.fg("warning", `Unanswered: ${missing}`));
+          addWrapped(theme.fg("warning", ` Unanswered: ${missing}`));
         }
       } else if (question) {
-        addWrapped(theme.fg("text", question.prompt));
-        lines.push("");
+        renderQuestionHeader(question);
         renderOptions();
       }
 
       lines.push("");
       if (!inputMode) {
         const help = isMulti
-          ? "Tab/Left/Right navigate | Up/Down select | Enter confirm | Esc cancel"
-          : "Up/Down navigate | Enter select | Esc cancel";
-        addWrapped(theme.fg("dim", help));
+          ? " Tab/Left/Right navigate | Up/Down select | Enter confirm | Esc cancel"
+          : " Up/Down navigate | Enter select | Esc cancel";
+        addLine(theme.fg("dim", help));
       }
       lines.push(border);
 
@@ -435,9 +463,12 @@ export default function questionnaire(pi: ExtensionAPI) {
     renderCall(args, theme, _context) {
       const questions = (args.questions as QuestionInput[]) || [];
       const count = questions.length;
-      const text =
-        theme.fg("toolTitle", theme.bold("questionnaire ")) +
-        theme.fg("muted", `${count} question${count === 1 ? "" : "s"}`);
+      const labels = questions.map((question) => question.label || question.id).join(", ");
+      let text = theme.fg("toolTitle", theme.bold("questionnaire "));
+      text += theme.fg("muted", `${count} question${count === 1 ? "" : "s"}`);
+      if (labels) {
+        text += theme.fg("dim", ` (${truncateToWidth(labels, 40)})`);
+      }
       return new Text(text, 0, 0);
     },
 
