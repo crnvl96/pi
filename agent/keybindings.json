@@ -2,5 +2,6 @@
   "tui.select.down": ["down", "ctrl+n"],
   "tui.select.up": ["up", "ctrl+p"],
   "app.models.save": [],
-  "app.session.toggleSort": []
+  "app.session.toggleSort": [],
+  "app.session.rename": []
 }
