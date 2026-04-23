@@ -63,9 +63,7 @@ For multi-step tasks, state a brief plan:
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
-## Writing rules
-
-### 1. ASCII-only writing
+### 5. ASCII-only writing
 
 Use ASCII characters only in all generated or edited text.
 
