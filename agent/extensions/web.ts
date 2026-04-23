@@ -9,6 +9,10 @@ import type {
   ResponseCreateParams,
   ResponseCreateResponse,
 } from "@perplexity-ai/perplexity_ai/resources/responses";
+import type {
+  SearchCreateParams,
+  SearchCreateResponse,
+} from "@perplexity-ai/perplexity_ai/resources/search";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
@@ -19,9 +23,14 @@ type FetchPage = {
   url: string;
 };
 
+type ApiSearchPage = SearchCreateResponse.Result;
+
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_TIMEOUT_MS = 30000;
 const DEFAULT_MODEL = "openai/gpt-5.4";
+const DEFAULT_MAX_RESULTS = 5;
+const DEFAULT_MAX_TOKENS = 20000;
+const DEFAULT_MAX_TOKENS_PER_PAGE = 4096;
 
 function readApiKey(): string {
   const apiKey = process.env.PERPLEXITY_API_KEY?.trim();
@@ -41,7 +50,7 @@ function getClient(): Perplexity {
       maxRetries: DEFAULT_MAX_RETRIES,
       timeout: DEFAULT_TIMEOUT_MS,
       defaultHeaders: {
-        "User-Agent": "pi-perplexity-web-fetch/1.0",
+        "User-Agent": "pi-perplexity-web/1.0",
       },
     });
   }
@@ -90,7 +99,7 @@ function extractFetchedPages(response: ResponseCreateResponse): FetchPage[] {
   return pages;
 }
 
-function formatResult(page: FetchPage, index: number): string {
+function formatFetchResult(page: FetchPage, index: number): string {
   const meta: string[] = [];
 
   try {
@@ -103,12 +112,37 @@ function formatResult(page: FetchPage, index: number): string {
 
 function formatFetchContext(requestedUrl: string, pages: FetchPage[]): string {
   const renderedResults =
-    pages.length > 0 ? pages.map(formatResult).join("\n\n") : "No fetched content returned.";
+    pages.length > 0 ? pages.map(formatFetchResult).join("\n\n") : "No fetched content returned.";
 
   return `Perplexity web fetch context for: ${requestedUrl}\n\nUse the fetched page content below as external context and cite the URL when relevant.\nThe page extract text comes from Perplexity's fetch_url tool for the exact requested URL.\n\n${renderedResults}`;
 }
 
-export default function perplexityWebFetchExtension(pi: ExtensionAPI) {
+function formatSearchResult(page: ApiSearchPage, index: number): string {
+  const meta: string[] = [];
+
+  try {
+    meta.push(`domain: ${new URL(page.url).hostname}`);
+  } catch {}
+
+  if (page.date) {
+    meta.push(`published: ${page.date}`);
+  }
+
+  if (page.last_updated) {
+    meta.push(`updated: ${page.last_updated}`);
+  }
+
+  const metaLine = meta.length > 0 ? `${meta.join(" | ")}\n` : "";
+  return `[${index + 1}] ${page.title}\n${page.url}\n${metaLine}page extract: ${page.snippet}`;
+}
+
+function formatSearchContext(query: string, pages: ApiSearchPage[]): string {
+  const renderedResults = pages.length > 0 ? pages.map(formatSearchResult).join("\n\n") : "No results returned.";
+
+  return `Perplexity web search context for: ${query}\n\nUse the numbered results below as external context and cite URLs when relevant.\nThe page extract text comes from Perplexity Search API snippet extraction, not a separate browser fetch performed by this tool.\n\n${renderedResults}`;
+}
+
+export default function perplexityWebExtension(pi: ExtensionAPI) {
   pi.registerTool({
     name: "web_fetch",
     label: "Perplexity Web Fetch",
@@ -171,6 +205,63 @@ export default function perplexityWebFetchExtension(pi: ExtensionAPI) {
     renderCall(args, theme, _context) {
       return new Text(
         theme.fg("toolTitle", theme.bold("web_fetch ")) + theme.fg("accent", `"${args.url}"`),
+        0,
+        0,
+      );
+    },
+  });
+
+  pi.registerTool({
+    name: "web_search",
+    label: "Perplexity Web Search",
+    description:
+      "Search the web using the Perplexity Search API via the official SDK and return ranked results with extracted page content.",
+    promptSnippet:
+      "Search the web using Perplexity when up-to-date external information is needed. Rewrite the user's wording into a strong web search query when helpful, and run multiple focused searches if that is more likely to find better results.",
+    promptGuidelines: [
+      "Use this tool when the user asks for current web information, news, docs, or sources outside the local codebase.",
+      "Prefer this tool over bash/curl for web search when up-to-date external information is needed.",
+      "Do not feel forced to use the user's words literally. Extract the real intent, entities, constraints, and time range, then turn that into a better search query.",
+      "When useful, broaden, narrow, or rephrase the query to improve recall and precision.",
+      "If one query is unlikely to be enough, run multiple targeted searches that cover different interpretations or subtopics, then synthesize the results.",
+    ],
+    parameters: Type.Object({
+      query: Type.String({ description: "Search query" }),
+    }),
+    execute: async (_toolCallId, params, signal) => {
+      const query = params.query.trim();
+
+      if (!query) {
+        throw new Error("query must not be empty");
+      }
+
+      const payload: SearchCreateParams = {
+        query,
+        max_results: DEFAULT_MAX_RESULTS,
+        max_tokens: DEFAULT_MAX_TOKENS,
+        max_tokens_per_page: DEFAULT_MAX_TOKENS_PER_PAGE,
+        search_language_filter: ["en"],
+      };
+
+      const result = await getClient().search.create(payload, { signal });
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: formatSearchContext(query, result.results),
+          },
+        ],
+        details: {
+          query,
+          resultCount: result.results.length,
+        },
+      };
+    },
+    renderCall(args, theme, _context) {
+      return new Text(
+        theme.fg("toolTitle", theme.bold("perplexity_web_search ")) +
+          theme.fg("accent", `"${args.query}"`),
         0,
         0,
       );

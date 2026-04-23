@@ -15,7 +15,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.notify(current ? `Session: ${current}` : "No session name set", "info");
   };
 
-  pi.registerCommand("session-name", {
+  pi.registerCommand("rename", {
     description: "Set or show session name (usage: /session-name [new name])",
     handler: async (args, ctx) => {
       await setOrShowSessionName(args.trim(), ctx);

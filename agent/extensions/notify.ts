@@ -1,7 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 function sanitizeOscText(value: string): string {
-  // oxlint-disable-next-line no-control-regex
   return value.replace(/[\x00-\x1f\x7f\x1b\x07]/g, " ");
 }
 
@@ -23,7 +22,7 @@ function notify(title: string, body: string): void {
   notifyOSC777(title, body);
 }
 
-export default function notifyExtension(pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI) {
   pi.on("agent_end", async (_event, ctx) => {
     if (!ctx.hasUI) {
       return;
