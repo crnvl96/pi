@@ -133,7 +133,7 @@ async function generateSessionName(ctx: ExtensionContext): Promise<string | unde
   const entries = ctx.sessionManager.getBranch() as MessageEntry[];
   const fallbackName = buildFallbackSessionName(entries);
   const conversationExcerpt = buildConversationExcerpt(entries);
-  const namingModel = ctx.modelRegistry.find("openai", "gpt-5.4-mini");
+  const namingModel = ctx.model;
 
   if (!conversationExcerpt || !namingModel) {
     return fallbackName;
