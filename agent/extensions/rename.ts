@@ -1,10 +1,14 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+type MsgLvl = "info" | "warning" | "error";
+type Ctx = {
+  ui: {
+    notify: (message: string, type?: MsgLvl) => void;
+  };
+};
+
 export default function (pi: ExtensionAPI) {
-  const setOrShowSessionName = async (
-    name: string,
-    ctx: { ui: { notify: (message: string, type?: "info" | "warning" | "error") => void } },
-  ) => {
+  const setOrShowSessionName = async (name: string, ctx: Ctx) => {
     if (name) {
       pi.setSessionName(name);
       ctx.ui.notify(`Session named: ${name}`, "info");
@@ -16,7 +20,7 @@ export default function (pi: ExtensionAPI) {
   };
 
   pi.registerCommand("rename", {
-    description: "Set or show session name (usage: /session-name [new name])",
+    description: "Set or show session name (usage: /rename [new name])",
     handler: async (args, ctx) => {
       await setOrShowSessionName(args.trim(), ctx);
     },

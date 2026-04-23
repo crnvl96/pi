@@ -17,17 +17,15 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
-type FetchPage = {
+type Page = {
   snippet: string;
   title: string;
   url: string;
 };
 
-type ApiSearchPage = SearchCreateResponse.Result;
-
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_TIMEOUT_MS = 30000;
-const DEFAULT_MODEL = "openai/gpt-5.4";
+const DEFAULT_PRESET = "pro-search";
 const DEFAULT_MAX_RESULTS = 5;
 const DEFAULT_MAX_TOKENS = 20000;
 const DEFAULT_MAX_TOKENS_PER_PAGE = 4096;
@@ -79,8 +77,8 @@ function normalizeUrl(input: string): string {
   return url.toString();
 }
 
-function extractFetchedPages(response: ResponseCreateResponse): FetchPage[] {
-  const pages: FetchPage[] = [];
+function extractFetchedPages(response: ResponseCreateResponse): Page[] {
+  const pages: Page[] = [];
 
   for (const item of response.output) {
     if (item.type !== "fetch_url_results") {
@@ -99,7 +97,7 @@ function extractFetchedPages(response: ResponseCreateResponse): FetchPage[] {
   return pages;
 }
 
-function formatFetchResult(page: FetchPage, index: number): string {
+function formatFetchResult(page: Page, index: number): string {
   const meta: string[] = [];
 
   try {
@@ -110,14 +108,14 @@ function formatFetchResult(page: FetchPage, index: number): string {
   return `[${index + 1}] ${page.title}\n${page.url}\n${metaLine}page extract: ${page.snippet}`;
 }
 
-function formatFetchContext(requestedUrl: string, pages: FetchPage[]): string {
+function formatFetchContext(requestedUrl: string, pages: Page[]): string {
   const renderedResults =
     pages.length > 0 ? pages.map(formatFetchResult).join("\n\n") : "No fetched content returned.";
 
   return `Perplexity web fetch context for: ${requestedUrl}\n\nUse the fetched page content below as external context and cite the URL when relevant.\nThe page extract text comes from Perplexity's fetch_url tool for the exact requested URL.\n\n${renderedResults}`;
 }
 
-function formatSearchResult(page: ApiSearchPage, index: number): string {
+function formatSearchResult(page: SearchCreateResponse.Result, index: number): string {
   const meta: string[] = [];
 
   try {
@@ -136,7 +134,7 @@ function formatSearchResult(page: ApiSearchPage, index: number): string {
   return `[${index + 1}] ${page.title}\n${page.url}\n${metaLine}page extract: ${page.snippet}`;
 }
 
-function formatSearchContext(query: string, pages: ApiSearchPage[]): string {
+function formatSearchContext(query: string, pages: SearchCreateResponse.Result[]): string {
   const renderedResults =
     pages.length > 0 ? pages.map(formatSearchResult).join("\n\n") : "No results returned.";
 
@@ -163,7 +161,7 @@ export default function (pi: ExtensionAPI) {
       const url = normalizeUrl(params.url);
 
       const payload: ResponseCreateParams = {
-        model: DEFAULT_MODEL,
+        preset: DEFAULT_PRESET,
         input: url,
         instructions:
           "Use fetch_url to fetch the exact URL from the user input. Do not use web_search. After fetching, respond with exactly: Fetched.",

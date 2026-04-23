@@ -7,19 +7,8 @@ function sanitizeOscText(value: string): string {
 function notifyOSC777(title: string, body: string): void {
   const safeTitle = sanitizeOscText(title);
   const safeBody = sanitizeOscText(body);
-  process.stdout.write(`\x1b]777;notify;${safeTitle};${safeBody}\x07`);
-}
-
-function canNotifyTerminal(): boolean {
-  return process.stdout.isTTY === true;
-}
-
-function notify(title: string, body: string): void {
-  if (!canNotifyTerminal()) {
-    return;
-  }
-
-  notifyOSC777(title, body);
+  const msg = `\x1b]777;notify;${safeTitle};${safeBody}\x07`;
+  process.stdout.write(msg);
 }
 
 export default function (pi: ExtensionAPI) {
@@ -28,6 +17,10 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    notify("Pi", "Ready");
+    if (process.stdout.isTTY !== true) {
+      return;
+    }
+
+    notifyOSC777("Pi", "ready");
   });
 }

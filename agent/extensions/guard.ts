@@ -37,7 +37,7 @@ const dangerousPatterns: DangerousPattern[] = [
   { pattern: /\baws\s+kms\s+schedule-key-deletion\b/i,                       label: "aws kms schedule-key-deletion"          },
 ];
 
-export default function guardExtension(pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
     if (!isToolCallEventType("bash", event)) {
       return undefined;
