@@ -19,11 +19,18 @@ import { Type } from "typebox";
 
 const DEFAULT_MAX_RETRIES = 3;
 const DEFAULT_TIMEOUT_MS = 30000;
+const MIN_MAX_RESULTS = 1;
+const MAX_MAX_RESULTS = 20;
 const DEFAULT_MAX_RESULTS = 5;
+const MAX_SEARCH_QUERIES = 5;
+const MAX_SEARCH_DOMAINS = 20;
 const DEFAULT_MAX_TOKENS = 20000;
 const DEFAULT_MAX_TOKENS_PER_PAGE = 4096;
 const WEB_FETCH_PRESET = "pro-search";
+const MAX_FETCH_URLS = 10;
 const DEFAULT_SEARCH_LANGUAGE_FILTER = ["en"];
+const SEARCH_RECENCY_FILTERS = ["hour", "day", "week", "month", "year"] as const;
+type SearchRecencyFilter = (typeof SEARCH_RECENCY_FILTERS)[number];
 
 function readApiKey(): string {
   const apiKey = process.env.PERPLEXITY_API_KEY?.trim();
@@ -50,6 +57,138 @@ function getClient(): Perplexity {
   return client;
 }
 
+type SearchResultGroup = SearchCreateResponse.Result[];
+
+function normalizeSearchQueries(rawQuery: unknown): string[] {
+  const rawQueries =
+    typeof rawQuery === "string"
+      ? [rawQuery]
+      : Array.isArray(rawQuery) && rawQuery.every((item) => typeof item === "string")
+        ? rawQuery
+        : undefined;
+
+  if (!rawQueries) {
+    throw new Error("query must be a string or an array of strings");
+  }
+
+  if (rawQueries.length === 0) {
+    throw new Error("query must contain at least one search query");
+  }
+
+  if (rawQueries.length > MAX_SEARCH_QUERIES) {
+    throw new Error(`query supports at most ${MAX_SEARCH_QUERIES} queries per request`);
+  }
+
+  const queries = rawQueries.map((query) => query.trim());
+  if (queries.some((query) => !query)) {
+    throw new Error("query entries must not be empty");
+  }
+
+  return queries;
+}
+
+function normalizeMaxResults(rawMaxResults: unknown): number {
+  if (rawMaxResults === undefined || rawMaxResults === null) {
+    return DEFAULT_MAX_RESULTS;
+  }
+
+  if (typeof rawMaxResults !== "number" || !Number.isFinite(rawMaxResults)) {
+    throw new Error("max_results must be a finite number");
+  }
+
+  return Math.min(MAX_MAX_RESULTS, Math.max(MIN_MAX_RESULTS, Math.trunc(rawMaxResults)));
+}
+
+function normalizeSearchDomainFilter(rawFilter: unknown): string[] | undefined {
+  if (rawFilter === undefined || rawFilter === null) {
+    return undefined;
+  }
+
+  if (!Array.isArray(rawFilter) || rawFilter.some((item) => typeof item !== "string")) {
+    throw new Error("search_domain_filter must be an array of strings");
+  }
+
+  if (rawFilter.length === 0) {
+    return undefined;
+  }
+
+  if (rawFilter.length > MAX_SEARCH_DOMAINS) {
+    throw new Error(`search_domain_filter supports at most ${MAX_SEARCH_DOMAINS} domains`);
+  }
+
+  const domains = rawFilter.map((domain) => domain.trim());
+  if (domains.some((domain) => !domain || domain === "-")) {
+    throw new Error("search_domain_filter entries must not be empty");
+  }
+
+  const hasAllowlist = domains.some((domain) => !domain.startsWith("-"));
+  const hasDenylist = domains.some((domain) => domain.startsWith("-"));
+  if (hasAllowlist && hasDenylist) {
+    throw new Error("search_domain_filter cannot mix allowlist and denylist entries");
+  }
+
+  return domains;
+}
+
+function normalizeSearchRecencyFilter(rawFilter: unknown): SearchRecencyFilter | undefined {
+  if (rawFilter === undefined || rawFilter === null) {
+    return undefined;
+  }
+
+  if (typeof rawFilter !== "string") {
+    throw new Error("search_recency_filter must be a string");
+  }
+
+  const filter = rawFilter.trim();
+  if (SEARCH_RECENCY_FILTERS.includes(filter as SearchRecencyFilter)) {
+    return filter as SearchRecencyFilter;
+  }
+
+  throw new Error(`search_recency_filter must be one of: ${SEARCH_RECENCY_FILTERS.join(", ")}`);
+}
+
+function normalizeOptionalString(value: unknown, name: string): string | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+
+  if (typeof value !== "string") {
+    throw new Error(`${name} must be a string`);
+  }
+
+  const trimmed = value.trim();
+  return trimmed || undefined;
+}
+
+function isSearchResult(value: unknown): value is SearchCreateResponse.Result {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const result = value as Partial<SearchCreateResponse.Result>;
+  return (
+    typeof result.title === "string" &&
+    typeof result.url === "string" &&
+    typeof result.snippet === "string"
+  );
+}
+
+function normalizeSearchResultGroups(rawResults: unknown): SearchResultGroup[] {
+  if (!Array.isArray(rawResults)) {
+    return [];
+  }
+
+  if (rawResults.length === 0) {
+    return [[]];
+  }
+
+  if (rawResults.every(Array.isArray)) {
+    return rawResults.map((group) => group.filter(isSearchResult));
+  }
+
+  return [rawResults.filter(isSearchResult)];
+}
+
 function formatSearchResult(page: SearchCreateResponse.Result, index: number): string {
   const meta: string[] = [];
 
@@ -66,14 +205,37 @@ function formatSearchResult(page: SearchCreateResponse.Result, index: number): s
   }
 
   const metaLine = meta.length > 0 ? `${meta.join(" | ")}\n` : "";
-  return `[${index + 1}] ${page.title}\n${page.url}\n${metaLine}page extract: ${page.snippet}`;
+  return `[${index}] ${page.title}\n${page.url}\n${metaLine}page extract: ${page.snippet}`;
 }
 
-function formatSearchContext(query: string, pages: SearchCreateResponse.Result[]): string {
-  const renderedResults =
-    pages.length > 0 ? pages.map(formatSearchResult).join("\n\n") : "No results returned.";
+function formatSearchContext(queries: string[], resultGroups: SearchResultGroup[]): string {
+  const renderedQueries =
+    queries.length === 1
+      ? queries[0]
+      : `\n${queries.map((query, index) => `[${index + 1}] ${query}`).join("\n")}`;
 
-  return `Perplexity web search context for: ${query}\n\nUse the numbered results below as external context and cite URLs when relevant.\nThe page extract text comes from Perplexity Search API snippet extraction, not a separate browser fetch performed by this tool.\n\n${renderedResults}`;
+  let nextResultIndex = 1;
+  const renderedResults =
+    resultGroups.length > 0
+      ? resultGroups
+          .map((pages, groupIndex) => {
+            const heading =
+              queries.length > 1 && resultGroups.length === queries.length
+                ? `Results for query ${groupIndex + 1}: ${queries[groupIndex]}\n\n`
+                : "";
+            if (pages.length === 0) {
+              return `${heading}No results returned.`;
+            }
+
+            const renderedPages = pages
+              .map((page) => formatSearchResult(page, nextResultIndex++))
+              .join("\n\n");
+            return `${heading}${renderedPages}`;
+          })
+          .join("\n\n")
+      : "No results returned.";
+
+  return `Perplexity web search context for ${queries.length === 1 ? "query" : "queries"}: ${renderedQueries}\n\nUse the numbered results below as external context and cite URLs when relevant.\nThe page extract text comes from Perplexity Search API snippet extraction, not a separate browser fetch performed by this tool.\n\n${renderedResults}`;
 }
 
 type FetchedUrlContent = {
@@ -103,17 +265,64 @@ function normalizeFetchUrl(rawUrl: string): URL {
   return url;
 }
 
-function buildFetchInput(url: URL): string {
+function normalizeFetchUrls(rawUrl: unknown, rawUrls: unknown): URL[] {
+  const values: string[] = [];
+
+  if (rawUrl !== undefined) {
+    if (typeof rawUrl === "string") {
+      values.push(rawUrl);
+    } else if (Array.isArray(rawUrl) && rawUrl.every((item) => typeof item === "string")) {
+      values.push(...rawUrl);
+    } else {
+      throw new Error("url must be a string or an array of strings");
+    }
+  }
+
+  if (rawUrls !== undefined) {
+    if (!Array.isArray(rawUrls) || rawUrls.some((item) => typeof item !== "string")) {
+      throw new Error("urls must be an array of strings");
+    }
+    values.push(...rawUrls);
+  }
+
+  if (values.length === 0) {
+    throw new Error("provide url or urls");
+  }
+
+  const uniqueUrls: URL[] = [];
+  const seenUrls = new Set<string>();
+  for (const value of values) {
+    const url = normalizeFetchUrl(value);
+    const normalized = url.toString();
+    if (!seenUrls.has(normalized)) {
+      seenUrls.add(normalized);
+      uniqueUrls.push(url);
+    }
+  }
+
+  if (uniqueUrls.length > MAX_FETCH_URLS) {
+    throw new Error(`web_fetch supports at most ${MAX_FETCH_URLS} URLs per request`);
+  }
+
+  return uniqueUrls;
+}
+
+function buildFetchInput(urls: URL[]): string {
+  const renderedUrls = urls.map((url, index) => `${index + 1}. ${url.toString()}`).join("\n");
+
   return [
-    "Fetch the exact URL below and return the page content as useful context for a coding agent.",
-    `URL: ${url.toString()}`,
+    urls.length === 1
+      ? "Fetch the exact URL below and return the page content as useful context for a coding agent."
+      : "Fetch the exact URLs below and return the page contents as useful context for a coding agent.",
+    urls.length === 1 ? `URL: ${urls[0].toString()}` : `URLs:\n${renderedUrls}`,
     "",
     "Requirements:",
     "- Use only the fetch_url tool.",
     "- Do not run a web search.",
-    "- Do not fetch any other URL.",
+    "- Do not fetch any URL not listed above.",
+    "- Fetch the listed URLs in one tool call when possible.",
     "- Preserve headings, API names, configuration keys, commands, and code examples when relevant.",
-    "- If the page cannot be fetched, explain the failure briefly.",
+    "- If any page cannot be fetched, explain the failure briefly.",
   ].join("\n");
 }
 
@@ -156,20 +365,29 @@ function formatFetchedUrlContent(content: FetchedUrlContent, index: number): str
 }
 
 function formatFetchContext(
-  url: string,
+  urls: string[],
   response: ResponseCreateResponse,
   fetchedContents: FetchedUrlContent[],
 ): string {
+  const requestedUrls = urls.map((url, index) => `[${index + 1}] ${url}`).join("\n");
   const fetchedSection =
     fetchedContents.length > 0
       ? fetchedContents.map(formatFetchedUrlContent).join("\n\n")
       : "No fetch_url_results content returned.";
   const responseText = extractResponseText(response);
   const responseSection = responseText
-    ? `\n\nPerplexity pro-search response:\n\n${responseText}`
+    ? `\n\nModel-generated response (not fetched source content; use only as fetch status or summary):\n\n${responseText}`
     : "";
 
-  return `Perplexity pro-search web fetch context for URL: ${url}\n\nUse the fetched content below as external context and cite URLs when relevant.\nThe page extract text comes from Perplexity Agent API fetch_url using the pro-search preset.\n\nFetched content:\n\n${fetchedSection}${responseSection}`;
+  return `Perplexity pro-search web fetch context for requested URL(s):\n\n${requestedUrls}\n\nUse the fetched content below as external context and cite URLs when relevant.\nThe page extract text comes from Perplexity Agent API fetch_url using the pro-search preset. Any model-generated response below is not fetched source content.\n\nFetched content:\n\n${fetchedSection}${responseSection}`;
+}
+
+function formatRenderArgument(value: unknown): string {
+  if (Array.isArray(value)) {
+    return value.join(", ");
+  }
+
+  return String(value ?? "");
 }
 
 export default function (pi: ExtensionAPI) {
@@ -185,46 +403,133 @@ export default function (pi: ExtensionAPI) {
       "Prefer this tool over bash/curl for web search when up-to-date external information is needed.",
       "Do not feel forced to use the user's words literally. Extract the real intent, entities, constraints, and time range, then turn that into a better search query.",
       "When useful, broaden, narrow, or rephrase the query to improve recall and precision.",
-      "If one query is unlikely to be enough, run multiple targeted searches that cover different interpretations or subtopics, then synthesize the results.",
+      "If one query is unlikely to be enough, pass up to 5 targeted queries in one multi-query request.",
+      "Set max_results only when the default of 5 results per query is not appropriate; values are clamped to Perplexity's 1..20 range.",
+      "Use search_domain_filter to restrict searches to official docs or exclude low-value sources. Do not mix allowlist domains with denylist domains prefixed by '-'.",
+      "Use search_recency_filter or date filters when release freshness matters, such as current APIs, changelogs, or recent tool behavior.",
+      "Results are restricted to English sources by default.",
     ],
     parameters: Type.Object({
-      query: Type.String({
-        description: "Search query",
-      }),
+      query: Type.Union([
+        Type.String({
+          description: "Search query",
+        }),
+        Type.Array(Type.String(), {
+          description: "Up to 5 search queries for one multi-query request",
+          maxItems: MAX_SEARCH_QUERIES,
+        }),
+      ]),
+      max_results: Type.Optional(
+        Type.Integer({
+          description: "Optional result count per query. Values are clamped to 1..20.",
+        }),
+      ),
+      search_domain_filter: Type.Optional(
+        Type.Array(Type.String(), {
+          description:
+            "Optional domain allowlist or denylist. Use ['docs.example.com'] to include only domains, or ['-reddit.com'] to exclude domains. Do not mix modes. Maximum 20 domains.",
+          maxItems: MAX_SEARCH_DOMAINS,
+        }),
+      ),
+      search_recency_filter: Type.Optional(
+        Type.Union([
+          Type.Literal("hour"),
+          Type.Literal("day"),
+          Type.Literal("week"),
+          Type.Literal("month"),
+          Type.Literal("year"),
+        ], {
+          description: "Optional recency filter for results.",
+        }),
+      ),
+      search_after_date_filter: Type.Optional(
+        Type.String({
+          description: "Optional result publication start date filter.",
+        }),
+      ),
+      search_before_date_filter: Type.Optional(
+        Type.String({
+          description: "Optional result publication end date filter.",
+        }),
+      ),
+      last_updated_after_filter: Type.Optional(
+        Type.String({
+          description: "Optional page last-updated start date filter.",
+        }),
+      ),
+      last_updated_before_filter: Type.Optional(
+        Type.String({
+          description: "Optional page last-updated end date filter.",
+        }),
+      ),
     }),
     execute: async (_toolCallId, params, signal) => {
-      const query = params.query.trim();
-
-      if (!query) {
-        throw new Error("query must not be empty");
-      }
+      const queries = normalizeSearchQueries(params.query);
+      const maxResults = normalizeMaxResults(params.max_results);
+      const searchDomainFilter = normalizeSearchDomainFilter(params.search_domain_filter);
+      const searchRecencyFilter = normalizeSearchRecencyFilter(params.search_recency_filter);
+      const searchAfterDateFilter = normalizeOptionalString(
+        params.search_after_date_filter,
+        "search_after_date_filter",
+      );
+      const searchBeforeDateFilter = normalizeOptionalString(
+        params.search_before_date_filter,
+        "search_before_date_filter",
+      );
+      const lastUpdatedAfterFilter = normalizeOptionalString(
+        params.last_updated_after_filter,
+        "last_updated_after_filter",
+      );
+      const lastUpdatedBeforeFilter = normalizeOptionalString(
+        params.last_updated_before_filter,
+        "last_updated_before_filter",
+      );
 
       const payload: SearchCreateParams = {
-        query,
-        max_results: DEFAULT_MAX_RESULTS,
+        query: queries.length === 1 ? queries[0] : queries,
+        max_results: maxResults,
         max_tokens: DEFAULT_MAX_TOKENS,
         max_tokens_per_page: DEFAULT_MAX_TOKENS_PER_PAGE,
         search_language_filter: DEFAULT_SEARCH_LANGUAGE_FILTER,
+        ...(searchDomainFilter ? { search_domain_filter: searchDomainFilter } : {}),
+        ...(searchRecencyFilter ? { search_recency_filter: searchRecencyFilter } : {}),
+        ...(searchAfterDateFilter ? { search_after_date_filter: searchAfterDateFilter } : {}),
+        ...(searchBeforeDateFilter ? { search_before_date_filter: searchBeforeDateFilter } : {}),
+        ...(lastUpdatedAfterFilter ? { last_updated_after_filter: lastUpdatedAfterFilter } : {}),
+        ...(lastUpdatedBeforeFilter ? { last_updated_before_filter: lastUpdatedBeforeFilter } : {}),
       };
 
       const result = await getClient().search.create(payload, { signal });
+      const resultGroups = normalizeSearchResultGroups(result.results);
+      const resultCount = resultGroups.reduce((count, group) => count + group.length, 0);
 
       return {
         content: [
           {
             type: "text",
-            text: formatSearchContext(query, result.results),
+            text: formatSearchContext(queries, resultGroups),
           },
         ],
         details: {
-          query,
-          resultCount: result.results.length,
+          query: queries.length === 1 ? queries[0] : queries,
+          queries,
+          maxResults,
+          searchDomainFilter,
+          searchRecencyFilter,
+          searchAfterDateFilter,
+          searchBeforeDateFilter,
+          lastUpdatedAfterFilter,
+          lastUpdatedBeforeFilter,
+          searchLanguageFilter: DEFAULT_SEARCH_LANGUAGE_FILTER,
+          resultCount,
+          responseId: result.id,
         },
       };
     },
     renderCall(args, theme, _context) {
       return new Text(
-        theme.fg("toolTitle", theme.bold("web_search ")) + theme.fg("accent", `"${args.query}"`),
+        theme.fg("toolTitle", theme.bold("web_search ")) +
+          theme.fg("accent", `"${formatRenderArgument(args.query)}"`),
         0,
         0,
       );
@@ -235,28 +540,44 @@ export default function (pi: ExtensionAPI) {
     name: "web_fetch",
     label: "Perplexity Web Fetch",
     description:
-      "Fetch a specific HTTP(S) URL provided by the user using Perplexity pro-search and return the fetched page context.",
+      "Fetch one or more specific HTTP(S) URLs provided by the user using Perplexity pro-search and return the fetched page context.",
     promptSnippet:
-      "Fetch a specific URL with web_fetch when the user provides an explicit URL to read, inspect, check, or use as documentation/context.",
+      "Fetch specific URLs with web_fetch when the user provides explicit URLs to read, inspect, check, or use as documentation/context.",
     promptGuidelines: [
-      "Use this tool when the user provides a URL and asks you to read, inspect, check, search at, or use that page as context.",
+      "Use this tool when the user provides one or more URLs and asks you to read, inspect, check, search at, or use those pages as context.",
       "Use web_search instead when the user asks to discover pages or search the web without a specific URL.",
-      "Prefer web_fetch over web_search when the user gave an exact URL, unless fetching fails or additional sources are needed.",
+      "Prefer web_fetch over web_search when the user gave exact URLs, unless fetching fails or additional sources are needed.",
+      "If the user provides multiple URLs, pass them together in urls instead of calling web_fetch repeatedly.",
       "Only fetch URLs that the user provided or clearly asked you to open.",
     ],
     parameters: Type.Object({
-      url: Type.String({
-        description: "Absolute http:// or https:// URL to fetch",
-      }),
+      url: Type.Optional(
+        Type.Union([
+          Type.String({
+            description: "Absolute http:// or https:// URL to fetch",
+          }),
+          Type.Array(Type.String(), {
+            description: "Absolute http:// or https:// URLs to fetch",
+            maxItems: MAX_FETCH_URLS,
+          }),
+        ]),
+      ),
+      urls: Type.Optional(
+        Type.Array(Type.String(), {
+          description: "Absolute http:// or https:// URLs to fetch in one request",
+          maxItems: MAX_FETCH_URLS,
+        }),
+      ),
     }),
     execute: async (_toolCallId, params, signal) => {
-      const url = normalizeFetchUrl(params.url);
+      const urls = normalizeFetchUrls(params.url, params.urls);
+      const requestedUrls = urls.map((url) => url.toString());
 
       const payload: ResponseCreateParamsNonStreaming = {
         preset: WEB_FETCH_PRESET,
-        input: buildFetchInput(url),
+        input: buildFetchInput(urls),
         max_steps: 1,
-        tools: [{ type: "fetch_url", max_urls: 1 }],
+        tools: [{ type: "fetch_url", max_urls: urls.length }],
       };
 
       const result = await getClient().responses.create(payload, { signal });
@@ -275,11 +596,12 @@ export default function (pi: ExtensionAPI) {
         content: [
           {
             type: "text",
-            text: formatFetchContext(url.toString(), result, fetchedContents),
+            text: formatFetchContext(requestedUrls, result, fetchedContents),
           },
         ],
         details: {
-          url: url.toString(),
+          url: requestedUrls[0],
+          urls: requestedUrls,
           preset: WEB_FETCH_PRESET,
           responseId: result.id,
           model: result.model,
@@ -290,8 +612,10 @@ export default function (pi: ExtensionAPI) {
       };
     },
     renderCall(args, theme, _context) {
+      const fetchArgument = args.urls ?? args.url;
       return new Text(
-        theme.fg("toolTitle", theme.bold("web_fetch ")) + theme.fg("accent", `"${args.url}"`),
+        theme.fg("toolTitle", theme.bold("web_fetch ")) +
+          theme.fg("accent", `"${formatRenderArgument(fetchArgument)}"`),
         0,
         0,
       );
