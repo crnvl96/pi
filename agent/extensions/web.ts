@@ -23,6 +23,7 @@ const DEFAULT_MAX_RESULTS = 5;
 const DEFAULT_MAX_TOKENS = 20000;
 const DEFAULT_MAX_TOKENS_PER_PAGE = 4096;
 const WEB_FETCH_PRESET = "pro-search";
+const DEFAULT_SEARCH_LANGUAGE_FILTER = ["en"];
 
 function readApiKey(): string {
   const apiKey = process.env.PERPLEXITY_API_KEY?.trim();
@@ -164,7 +165,9 @@ function formatFetchContext(
       ? fetchedContents.map(formatFetchedUrlContent).join("\n\n")
       : "No fetch_url_results content returned.";
   const responseText = extractResponseText(response);
-  const responseSection = responseText ? `\n\nPerplexity pro-search response:\n\n${responseText}` : "";
+  const responseSection = responseText
+    ? `\n\nPerplexity pro-search response:\n\n${responseText}`
+    : "";
 
   return `Perplexity pro-search web fetch context for URL: ${url}\n\nUse the fetched content below as external context and cite URLs when relevant.\nThe page extract text comes from Perplexity Agent API fetch_url using the pro-search preset.\n\nFetched content:\n\n${fetchedSection}${responseSection}`;
 }
@@ -185,7 +188,9 @@ export default function (pi: ExtensionAPI) {
       "If one query is unlikely to be enough, run multiple targeted searches that cover different interpretations or subtopics, then synthesize the results.",
     ],
     parameters: Type.Object({
-      query: Type.String({ description: "Search query" }),
+      query: Type.String({
+        description: "Search query",
+      }),
     }),
     execute: async (_toolCallId, params, signal) => {
       const query = params.query.trim();
@@ -199,7 +204,7 @@ export default function (pi: ExtensionAPI) {
         max_results: DEFAULT_MAX_RESULTS,
         max_tokens: DEFAULT_MAX_TOKENS,
         max_tokens_per_page: DEFAULT_MAX_TOKENS_PER_PAGE,
-        search_language_filter: ["en"],
+        search_language_filter: DEFAULT_SEARCH_LANGUAGE_FILTER,
       };
 
       const result = await getClient().search.create(payload, { signal });
@@ -240,10 +245,13 @@ export default function (pi: ExtensionAPI) {
       "Only fetch URLs that the user provided or clearly asked you to open.",
     ],
     parameters: Type.Object({
-      url: Type.String({ description: "Absolute http:// or https:// URL to fetch" }),
+      url: Type.String({
+        description: "Absolute http:// or https:// URL to fetch",
+      }),
     }),
     execute: async (_toolCallId, params, signal) => {
       const url = normalizeFetchUrl(params.url);
+
       const payload: ResponseCreateParamsNonStreaming = {
         preset: WEB_FETCH_PRESET,
         input: buildFetchInput(url),
