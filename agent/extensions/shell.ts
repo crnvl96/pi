@@ -1,13 +1,3 @@
-/*
- * Interactive shell extension.
- *
- * Usage:
- *   !i                 # Open an interactive shell
- *   !i vim file.txt    # Run a command with full terminal access
- *
- * This only intercepts user `!i` commands, not agent bash tool calls.
- */
-
 import { spawnSync } from "node:child_process";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
