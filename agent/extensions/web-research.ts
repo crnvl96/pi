@@ -1,6 +1,4 @@
 /*
-## Auth
-
 Set `PERPLEXITY_API_KEY` in your environment.
 */
 
