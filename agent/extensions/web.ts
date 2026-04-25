@@ -20,6 +20,21 @@ const DEFAULT_MAX_TOKENS = 20000;
 const DEFAULT_MAX_TOKENS_PER_PAGE = 4096;
 const DEFAULT_SEARCH_LANGUAGE_FILTER = ["en"];
 
+type WebSearchResultHeader = {
+  title: string;
+  url: string;
+  domain?: string;
+  date?: string;
+  lastUpdated?: string;
+};
+
+type WebSearchToolDetails = {
+  query: string;
+  resultCount: number;
+  responseId: string;
+  results: WebSearchResultHeader[];
+};
+
 function readApiKey(): string {
   const apiKey = process.env.PERPLEXITY_API_KEY?.trim();
   if (apiKey) {
@@ -59,23 +74,42 @@ function normalizeQuery(value: unknown): string {
   return query;
 }
 
+function getDomain(url: string): string | undefined {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return undefined;
+  }
+}
+
+function toResultHeader(page: SearchCreateResponse.Result): WebSearchResultHeader {
+  return {
+    title: page.title,
+    url: page.url,
+    domain: getDomain(page.url),
+    date: page.date ?? undefined,
+    lastUpdated: page.last_updated ?? undefined,
+  };
+}
+
 function formatResult(page: SearchCreateResponse.Result, index: number): string {
+  const header = toResultHeader(page);
   const meta: string[] = [];
 
-  try {
-    meta.push(`domain: ${new URL(page.url).hostname}`);
-  } catch {}
-
-  if (page.date) {
-    meta.push(`published: ${page.date}`);
+  if (header.domain) {
+    meta.push(`domain: ${header.domain}`);
   }
 
-  if (page.last_updated) {
-    meta.push(`updated: ${page.last_updated}`);
+  if (header.date) {
+    meta.push(`published: ${header.date}`);
+  }
+
+  if (header.lastUpdated) {
+    meta.push(`updated: ${header.lastUpdated}`);
   }
 
   const metaLine = meta.length > 0 ? `${meta.join(" | ")}\n` : "";
-  return `[${index}] ${page.title}\n${page.url}\n${metaLine}page extract: ${page.snippet}`;
+  return `[${index}] ${header.title}\n${header.url}\n${metaLine}page extract: ${page.snippet}`;
 }
 
 function formatContext(query: string, results: SearchCreateResponse.Result[]): string {
@@ -126,7 +160,8 @@ export default function (pi: ExtensionAPI) {
           query,
           resultCount: result.results.length,
           responseId: result.id,
-        },
+          results: result.results.map(toResultHeader),
+        } satisfies WebSearchToolDetails,
       };
     },
     renderCall(args, theme, _context) {
@@ -136,6 +171,39 @@ export default function (pi: ExtensionAPI) {
         0,
         0,
       );
+    },
+
+    renderResult(result, { expanded, isPartial }, theme, _context) {
+      if (isPartial) return new Text(theme.fg("warning", "Searching..."), 0, 0);
+
+      const content = result.content[0];
+      if (content?.type === "text" && content.text.startsWith("Error")) {
+        return new Text(theme.fg("error", content.text.split("\n")[0]), 0, 0);
+      }
+
+      const details = result.details as Partial<WebSearchToolDetails> | undefined;
+      const headers = details?.results ?? [];
+      const resultCount = details?.resultCount ?? headers.length;
+
+      let text = theme.fg("success", resultCount === 1 ? "1 result" : `${resultCount} results`);
+
+      for (const [index, header] of headers.entries()) {
+        const meta: string[] = [];
+        if (header.domain) meta.push(header.domain);
+        if (header.date) meta.push(`published: ${header.date}`);
+        if (header.lastUpdated) meta.push(`updated: ${header.lastUpdated}`);
+
+        text += `\n${theme.fg("accent", `[${index + 1}] ${header.title}`)}`;
+        if (meta.length > 0) {
+          text += `\n${theme.fg("dim", meta.join(" | "))}`;
+        }
+
+        if (expanded) {
+          text += `\n${theme.fg("dim", header.url)}`;
+        }
+      }
+
+      return new Text(text, 0, 0);
     },
   });
 }
