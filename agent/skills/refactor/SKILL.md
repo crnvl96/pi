@@ -1,9 +1,13 @@
 ---
 name: refactor
-description: Plan structural changes to existing code. Use for refactor plans, architecture improvements, deepening shallow modules, and tiny safe commits.
+description: Use when implementing refactor changes in the codebase, including designing and discussing refactor plans.
 ---
 
-Use this skill when the user wants to plan a refactor, structural code change, or architecture improvement. If the user has already provided enough context, do not ask for a long description again; summarize your understanding and ask for corrections.
+Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
+
+Ask the questions one at a time, waiting for feedback on each question before continuing.
+
+If a question can be answered by exploring the codebase, explore the codebase instead.
 
 ## Architecture guidance
 

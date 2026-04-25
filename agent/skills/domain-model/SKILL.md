@@ -1,11 +1,11 @@
 ---
 name: domain-model
-description: Clarify a design, plan, or domain concept against CONTEXT.md and ADRs. Use for terminology, glossary, ubiquitous language, domain model updates, and ADR-worthy decisions.
+description: Use when designing plans that will change the codebase, or during interview sessions that aim to build shared understanding of the codebase.
 ---
 
-When invoked directly, interview the user until the design, terminology, and decision dependencies are clear. Ask one question at a time and provide your recommended answer.
+Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
 
-When loaded for a narrower request, ask only the questions needed to resolve the current ambiguity.
+Ask the questions one at a time, waiting for feedback on each question before continuing.
 
 If a question can be answered by exploring the codebase, explore the codebase instead.
 

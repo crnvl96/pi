@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: Implement a feature or bug fix with red-green-refactor. Use for test-first coding, behavior tests, integration tests, and safe implementation loops.
+description: Use when changing code. TDD is the preferred approach and should guide implementation steps whenever suitable.
 ---
 
 # Test-Driven Development
