@@ -1,13 +1,3 @@
-/**
- * Custom Footer Extension - demonstrates ctx.ui.setFooter()
- *
- * footerData exposes data not otherwise accessible:
- * - getGitBranch(): current git branch
- * - getExtensionStatuses(): texts from ctx.ui.setStatus()
- *
- * Token stats come from ctx.sessionManager/ctx.model (already accessible).
- */
-
 import type { AssistantMessage } from "@mariozechner/pi-ai";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
@@ -15,18 +5,16 @@ import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_args, ctx) => {
     ctx.ui.setFooter((tui, theme, footerData) => {
-      const unsub = footerData.onBranchChange(() => tui.requestRender());
-
       return {
-        dispose: unsub,
+        dispose: footerData.onBranchChange(() => tui.requestRender()),
         invalidate() {},
         render(width: number): string[] {
-          // Compute tokens from ctx (already accessible to extensions)
-          let input = 0,
-            output = 0,
-            cost = 0,
-            cacheRead = 0,
-            cacheWrite = 0;
+          let input = 0;
+          let output = 0;
+          let cost = 0;
+          let cacheRead = 0;
+          let cacheWrite = 0;
+
           for (const e of ctx.sessionManager.getBranch()) {
             if (e.type === "message" && e.message.role === "assistant") {
               const m = e.message as AssistantMessage;
@@ -38,16 +26,18 @@ export default function (pi: ExtensionAPI) {
             }
           }
 
-          // Get git branch (not otherwise accessible)
+          const fmtNumber = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`);
           const branch = footerData.getGitBranch();
-          const fmt = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`);
 
           const left = theme.fg(
             "dim",
-            `↑${fmt(input)} ↓${fmt(output)} $${cost.toFixed(3)} R${fmt(cacheRead)} W${fmt(cacheWrite)}`,
+            `↑${fmtNumber(input)} ↓${fmtNumber(output)} · ↑${fmtNumber(cacheRead)} ↓${fmtNumber(cacheWrite)} · $${cost.toFixed(2)}`,
           );
-          const branchStr = branch ? ` (${branch})` : "";
-          const right = theme.fg("dim", `${ctx.model?.id || "no-model"}${branchStr}`);
+
+          const right = theme.fg(
+            "dim",
+            `${ctx.model?.provider} · ${ctx.model?.id || "no-model"} · ${ctx.model ? pi.getThinkingLevel() : ""} · ${branch ? `${branch}` : ""}`,
+          );
 
           const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
           return [truncateToWidth(left + pad + right, width)];
