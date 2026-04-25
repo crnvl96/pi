@@ -29,7 +29,7 @@ export default function (pi: ExtensionAPI) {
           const fmtNumber = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`);
           const left = theme.fg(
             "dim",
-            `↑${fmtNumber(input)} ↓${fmtNumber(output)} · ↑${fmtNumber(cacheWrite)} ↓${fmtNumber(cacheRead)} · $${cost.toFixed(2)}`,
+            `i↑${fmtNumber(input)} o↓${fmtNumber(output)} · r↓${fmtNumber(cacheRead)} w↑${fmtNumber(cacheWrite)} · $${cost.toFixed(2)}`,
           );
 
           let provider = "";

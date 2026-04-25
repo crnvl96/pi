@@ -188,18 +188,18 @@ export default function (pi: ExtensionAPI) {
       let text = theme.fg("success", resultCount === 1 ? "1 result" : `${resultCount} results`);
 
       for (const [index, header] of headers.entries()) {
-        const meta: string[] = [];
-        if (header.domain) meta.push(header.domain);
-        if (header.date) meta.push(`published: ${header.date}`);
-        if (header.lastUpdated) meta.push(`updated: ${header.lastUpdated}`);
-
         text += `\n${theme.fg("accent", `[${index + 1}] ${header.title}`)}`;
-        if (meta.length > 0) {
-          text += `\n${theme.fg("dim", meta.join(" | "))}`;
-        }
 
         if (expanded) {
+          const meta: string[] = [];
+          if (header.domain) meta.push(header.domain);
+          if (header.date) meta.push(`published: ${header.date}`);
+          if (header.lastUpdated) meta.push(`updated: ${header.lastUpdated}`);
+
           text += `\n${theme.fg("dim", header.url)}`;
+          if (meta.length > 0) {
+            text += `\n${theme.fg("dim", meta.join(" | "))}`;
+          }
         }
       }
 

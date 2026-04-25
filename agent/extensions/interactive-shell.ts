@@ -16,6 +16,7 @@ function getInteractiveCommand(command: string): string | undefined {
 export default function (pi: ExtensionAPI) {
   pi.on("user_bash", async (event, ctx) => {
     const command = getInteractiveCommand(event.command);
+
     if (command === undefined) {
       return;
     }
