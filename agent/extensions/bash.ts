@@ -1,31 +1,27 @@
-import type {
-  BashToolDetails,
-  EditToolDetails,
-  ExtensionAPI,
-  ReadToolDetails,
-} from "@mariozechner/pi-coding-agent";
-import {
-  createBashTool,
-  createEditTool,
-  createReadTool,
-  createWriteTool,
-} from "@mariozechner/pi-coding-agent";
+import type { BashToolDetails, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { createBashTool } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 
 export default function (pi: ExtensionAPI) {
   const cwd = process.cwd();
-  const originalBash = createBashTool(cwd);
+
+  const originalBash = createBashTool(cwd, {
+    spawnHook: ({ command, cwd, env }) => ({
+      command: `source ~/.profile\n${command}`,
+      cwd,
+      env: { ...env },
+    }),
+  });
 
   pi.registerTool({
+    ...originalBash,
     name: "bash",
     label: "bash",
     description: originalBash.description,
     parameters: originalBash.parameters,
-
     async execute(toolCallId, params, signal, onUpdate) {
       return originalBash.execute(toolCallId, params, signal, onUpdate);
     },
-
     renderCall(args, theme, _context) {
       let text = theme.fg("toolTitle", theme.bold("$ "));
       const cmd = args.command.length > 80 ? `${args.command.slice(0, 77)}...` : args.command;
@@ -35,7 +31,6 @@ export default function (pi: ExtensionAPI) {
       }
       return new Text(text, 0, 0);
     },
-
     renderResult(result, { expanded, isPartial }, theme, _context) {
       if (isPartial) return new Text(theme.fg("warning", "Running..."), 0, 0);
 

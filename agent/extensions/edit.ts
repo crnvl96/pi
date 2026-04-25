@@ -1,15 +1,5 @@
-import type {
-  BashToolDetails,
-  EditToolDetails,
-  ExtensionAPI,
-  ReadToolDetails,
-} from "@mariozechner/pi-coding-agent";
-import {
-  createBashTool,
-  createEditTool,
-  createReadTool,
-  createWriteTool,
-} from "@mariozechner/pi-coding-agent";
+import type { EditToolDetails, ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { createEditTool } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 
 export default function (pi: ExtensionAPI) {
