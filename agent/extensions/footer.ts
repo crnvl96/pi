@@ -26,10 +26,19 @@ export default function (pi: ExtensionAPI) {
             }
           }
 
+          const formatContext = (ctx: ExtensionContext): string => {
+            const usage = ctx.getContextUsage();
+            const contextWindow = usage?.contextWindow ?? ctx.model?.contextWindow;
+            if (!contextWindow || !usage || usage.percent === null) {
+              return "ctx ?";
+            }
+            return `ctx ${Math.round(usage.percent)}%/${(contextWindow / 1000).toFixed(0)}k`;
+          };
+
           const fmtNumber = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`);
           const left = theme.fg(
             "dim",
-            `i↑${fmtNumber(input)} o↓${fmtNumber(output)} · r↓${fmtNumber(cacheRead)} w↑${fmtNumber(cacheWrite)} · $${cost.toFixed(2)}`,
+            `I:${fmtNumber(input)} O:${fmtNumber(output)} · R:${fmtNumber(cacheRead)} W:${fmtNumber(cacheWrite)} · ${formatContext(ctx)} · $${cost.toFixed(2)}`,
           );
 
           let provider = "";
