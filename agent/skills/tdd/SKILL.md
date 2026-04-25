@@ -1,6 +1,6 @@
 ---
 name: tdd
-description: Use when changing code. TDD is the preferred approach and should guide implementation steps whenever suitable.
+description: Use when changing code, planning or designing testing strategies, or when discussing decisions that affect what to test, how to test or when tests should be written. TDD is the preferred approach and should guide implementation steps whenever suitable.
 ---
 
 # Test-Driven Development
