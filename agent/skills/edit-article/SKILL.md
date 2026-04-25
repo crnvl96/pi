@@ -9,4 +9,6 @@ Consider that information is a directed acyclic graph, and that pieces of inform
 
 Confirm the sections with the user.
 
-2. For each section, rewrite the section to improve clarity, coherence, and flow. Use maximum 240 characters per paragraph.
+2. For each section:
+
+2a. Rewrite the section to improve clarity, coherence, and flow. Use maximum 240 characters per paragraph.

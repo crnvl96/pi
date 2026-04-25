@@ -1,86 +1,65 @@
 ---
 name: domain-model
-description: Grilling session that challenges a plan against the existing domain model, sharpens terminology, and updates documentation (CONTEXT.md, ADRs) inline as decisions crystallize. Use when user wants to stress-test a plan against a project's language and documented decisions.
+description: Grilling session that challenges your plan against the existing domain model, sharpens terminology, and updates documentation (CONTEXT.md, ADRs) inline as decisions crystallise. Use when user wants to stress-test a plan against their project's language and documented decisions.
 disable-model-invocation: true
 ---
 
-# Domain Model
+Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
 
-## General Guidelines
+Ask the questions one at a time, waiting for feedback on each question before continuing.
 
-### 1. Interview Relentlessly
+If a question can be answered by exploring the codebase, explore the codebase instead.
 
-**One question at a time. Recommend an answer. Wait for feedback.**
+## Domain awareness
 
-- Interview the user about every aspect of the plan until you reach shared understanding.
-- Walk down each branch of the design tree and resolve dependencies between decisions one by one.
-- For each question, provide your recommended answer.
-- Ask one question at a time, then wait for the user's feedback before continuing.
-- If a question can be answered by exploring the codebase, explore the codebase instead.
+During codebase exploration, also look for existing documentation:
 
-### 2. Read The Existing Domain Model
+### File structure
 
-**Use the project's language and decisions before challenging the plan.**
+A single context at the root of repository:
 
-During codebase exploration, look for existing documentation:
-
-- `CONTEXT-MAP.md` for multi-context repositories
-- `CONTEXT.md` for a single context or for each context listed in `CONTEXT-MAP.md`
-- ADRs in `docs/adr/`
-
-A single-context repository usually looks like this:
-
-```text
+```
 /
-|-- CONTEXT.md
-|-- docs/
-|   `-- adr/
-|       |-- 0001-event-sourced-orders.md
-|       `-- 0002-postgres-for-write-model.md
-`-- src/
+├── CONTEXT.md
+├── docs/
+│   └── adr/
+│       ├── 0001-event-sourced-orders.md
+│       └── 0002-postgres-for-write-model.md
+└── src/
 ```
 
-Create files lazily. If no `CONTEXT.md` exists, create one when the first term is resolved. If no `docs/adr/` exists, create it when the first ADR is needed.
+Create files lazily — only when you have something to write. If no `CONTEXT.md` exists, create one when the first term is resolved. If no `docs/adr/` exists, create it when the first ADR is needed.
 
-Use the reference formats only when writing documentation:
+## During the session
 
-- [CONTEXT.md format](references/CONTEXT-FORMAT.md)
-- [ADR format](references/ADR-FORMAT.md)
+### Challenge against the glossary
 
-### 3. Challenge Language
+When the user uses a term that conflicts with the existing language in `CONTEXT.md`, call it out immediately. "Your glossary defines 'cancellation' as X, but you seem to mean Y — which is it?"
 
-**Make terminology precise and consistent.**
+### Sharpen fuzzy language
 
-- When the user uses a term that conflicts with `CONTEXT.md`, call it out immediately. Example: "Your glossary defines 'cancellation' as X, but you seem to mean Y - which is it?"
-- When the user uses vague or overloaded terms, propose a precise canonical term. Example: "You are saying 'account' - do you mean the Customer or the User? Those are different things."
-- Do not couple `CONTEXT.md` to implementation details. Only include terms that are meaningful to domain experts.
+When the user uses vague or overloaded terms, propose a precise canonical term. "You're saying 'account' — do you mean the Customer or the User? Those are different things."
 
-### 4. Test With Scenarios And Code
+### Discuss concrete scenarios
 
-**Use concrete cases and the codebase to expose hidden contradictions.**
+When domain relationships are being discussed, stress-test them with specific scenarios. Invent scenarios that probe edge cases and force the user to be precise about the boundaries between concepts.
 
-- When domain relationships are being discussed, stress-test them with specific scenarios.
-- Invent scenarios that probe edge cases and force precise boundaries between concepts.
-- When the user states how something works, check whether the code agrees.
-- If code contradicts the user, surface it. Example: "Your code cancels entire Orders, but you just said partial cancellation is possible - which is right?"
+### Cross-reference with code
 
-### 5. Update CONTEXT.md Inline
+When the user states how something works, check whether the code agrees. If you find a contradiction, surface it: "Your code cancels entire Orders, but you just said partial cancellation is possible — which is right?"
 
-**Capture resolved language as it crystallizes.**
+### Update CONTEXT.md inline
 
-- When a term is resolved, update `CONTEXT.md` right there.
-- Do not batch context updates.
-- Use [CONTEXT.md format](references/CONTEXT-FORMAT.md).
-- If multiple contexts exist, infer which context the topic belongs to. If unclear, ask.
+When a term is resolved, update `CONTEXT.md` right there. Don't batch these up — capture them as they happen. Use the format in [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md).
 
-### 6. Offer ADRs Sparingly
+Don't couple `CONTEXT.md` to implementation details. Only include terms that are meaningful to domain experts.
 
-**Record only decisions that future readers will need.**
+### Offer ADRs sparingly
 
 Only offer to create an ADR when all three are true:
 
-1. **Hard to reverse** - the cost of changing the decision later is meaningful.
-2. **Surprising without context** - a future reader will wonder why the project works this way.
-3. **The result of a real trade-off** - there were genuine alternatives and one was chosen for specific reasons.
+1. **Hard to reverse** — the cost of changing your mind later is meaningful
+2. **Surprising without context** — a future reader will wonder "why did they do it this way?"
+3. **The result of a real trade-off** — there were genuine alternatives and you picked one for specific reasons
 
-If any criterion is missing, skip the ADR. Use [ADR format](references/ADR-FORMAT.md).
+If any of the three is missing, skip the ADR. Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
