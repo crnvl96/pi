@@ -27,17 +27,23 @@ export default function (pi: ExtensionAPI) {
           }
 
           const fmtNumber = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`);
-          const branch = footerData.getGitBranch();
-
           const left = theme.fg(
             "dim",
-            `↑${fmtNumber(input)} ↓${fmtNumber(output)} · ↑${fmtNumber(cacheRead)} ↓${fmtNumber(cacheWrite)} · $${cost.toFixed(2)}`,
+            `↑${fmtNumber(input)} ↓${fmtNumber(output)} · ↑${fmtNumber(cacheWrite)} ↓${fmtNumber(cacheRead)} · $${cost.toFixed(2)}`,
           );
 
-          const right = theme.fg(
-            "dim",
-            `${ctx.model?.provider} · ${ctx.model?.id || "no-model"} · ${ctx.model ? pi.getThinkingLevel() : ""} · ${branch ? `${branch}` : ""}`,
-          );
+          let provider = "";
+          let id = "";
+          let thinkingLevel = "";
+
+          if (ctx.model) {
+            provider = ctx.model.provider;
+            id = ctx.model.id;
+            thinkingLevel = pi.getThinkingLevel();
+          }
+
+          const branch = footerData.getGitBranch() || "no-branch";
+          const right = theme.fg("dim", `${provider} · ${id} · ${thinkingLevel} · ${branch}`);
 
           const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
           return [truncateToWidth(left + pad + right, width)];
