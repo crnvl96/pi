@@ -31,10 +31,10 @@ export default function (pi: ExtensionAPI) {
             const contextWindow = usage?.contextWindow ?? ctx.model?.contextWindow;
 
             if (!contextWindow || !usage || usage.percent === null) {
-              return "ctx ?";
+              return "?";
             }
 
-            return `ctx ${Math.round(usage.percent)}%/${(contextWindow / 1000).toFixed(0)}k`;
+            return `${Math.round(usage.percent)}%/${(contextWindow / 1000).toFixed(0)}k`;
           };
 
           const fmtNumber = (n: number) => {
@@ -44,7 +44,7 @@ export default function (pi: ExtensionAPI) {
 
           const left = theme.fg(
             "dim",
-            `[${fmtNumber(input)}/${fmtNumber(output)}] · [${fmtNumber(cacheRead)}/${fmtNumber(cacheWrite)}] · $${cost.toFixed(2)} · ${formatContext(ctx)}`,
+            `[I/O: ${fmtNumber(input)}/${fmtNumber(output)}] [R/W: ${fmtNumber(cacheRead)}/${fmtNumber(cacheWrite)}] $${cost.toFixed(2)} (${formatContext(ctx)})`,
           );
 
           let provider = "";
