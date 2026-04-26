@@ -7,6 +7,36 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Markdown, Text, matchesKey, type Component } from "@mariozechner/pi-tui";
 
+const VIEWER_TITLE = "Last assistant response";
+const SCROLL_HELP_TEXT =
+  "j/e/f/down and k/y/b/up scroll, d/u half page, g/G top/bottom, q/esc quit";
+const VIEWER_SHORTCUT = "alt+o";
+const VIEWER_SHORTCUT_DESCRIPTION = "Render the last assistant response with pi TUI";
+const VIEWER_OVERLAY_OPTIONS = {
+  overlay: true,
+  overlayOptions: {
+    anchor: "top-left",
+    row: 0,
+    col: 0,
+    width: "100%",
+    maxHeight: "100%",
+  },
+} as const;
+
+type ScrollAction =
+  | "close"
+  | "lineUp"
+  | "lineDown"
+  | "halfPageUp"
+  | "halfPageDown"
+  | "top"
+  | "bottom";
+
+type VisibleLineRange = {
+  firstLine: number;
+  lastLine: number;
+};
+
 function extractTextBlocks(content: unknown): string[] {
   if (!Array.isArray(content)) return [];
 
@@ -37,8 +67,23 @@ function getLastAssistantResponse(entries: SessionEntry[]): string | undefined {
   return undefined;
 }
 
+function getScrollAction(data: string): ScrollAction | undefined {
+  if (matchesKey(data, "escape") || data === "q") return "close";
+  if (matchesKey(data, "up") || data === "k" || data === "y" || data === "b") {
+    return "lineUp";
+  }
+  if (matchesKey(data, "down") || data === "j" || data === "e" || data === "f") {
+    return "lineDown";
+  }
+  if (data === "u") return "halfPageUp";
+  if (data === "d") return "halfPageDown";
+  if (data === "g") return "top";
+  if (data === "G") return "bottom";
+
+  return undefined;
+}
+
 class LastResponseViewer implements Component {
-  private readonly title: Text;
   private readonly markdown: Markdown;
   private scrollOffset = 0;
   private visibleBodyLines = 1;
@@ -51,73 +96,96 @@ class LastResponseViewer implements Component {
     private readonly close: () => void,
     private readonly theme: Theme,
   ) {
-    this.title = new Text(theme.fg("accent", theme.bold("Last assistant response")), 1, 0);
     this.markdown = new Markdown(response, 1, 1, getMarkdownTheme());
   }
 
   render(width: number): string[] {
-    const titleLines = this.title.render(width);
-    const bodyLines = this.markdown.render(width);
-    this.bodyLineCount = bodyLines.length;
+    const titleLines = this.renderTitle(width);
+    const bodyLines = this.renderBody(width);
+    const footerLinesForLayout = this.renderFooterForLayout(width);
 
-    const initialFooter = new Text(
-      this.theme.fg(
-        "dim",
-        "j/e/f/down and k/y/b/up scroll, d/u half page, g/G top/bottom, q/esc quit",
-      ),
-      1,
-      0,
-    );
-    this.visibleBodyLines = Math.max(
-      1,
-      this.terminalRows() - titleLines.length - initialFooter.render(width).length,
+    this.visibleBodyLines = this.getVisibleBodyLineCount(
+      titleLines.length,
+      footerLinesForLayout.length,
     );
     this.clampScroll();
 
-    const firstLine = Math.min(this.scrollOffset + 1, this.bodyLineCount || 1);
-    const lastLine = this.bodyLineCount
-      ? Math.min(this.scrollOffset + this.visibleBodyLines, this.bodyLineCount)
-      : 1;
-    const footerText = `Line ${firstLine}-${lastLine} of ${this.bodyLineCount || 1} - j/e/f/down and k/y/b/up scroll, d/u half page, g/G top/bottom, q/esc quit`;
-    const footer = new Text(this.theme.fg("dim", footerText), 1, 0);
+    const lineRange = this.getVisibleLineRange();
+    const visibleBodyLines = bodyLines.slice(
+      this.scrollOffset,
+      this.scrollOffset + this.visibleBodyLines,
+    );
 
-    return [
-      ...titleLines,
-      ...bodyLines.slice(this.scrollOffset, this.scrollOffset + this.visibleBodyLines),
-      ...footer.render(width),
-    ];
+    return [...titleLines, ...visibleBodyLines, ...this.renderFooter(width, lineRange)];
   }
 
   handleInput(data: string): void {
-    if (matchesKey(data, "escape") || data === "q") {
+    const action = getScrollAction(data);
+    if (!action) return;
+
+    if (action === "close") {
       this.close();
       return;
     }
 
-    if (matchesKey(data, "up") || data === "k" || data === "y" || data === "b") {
-      this.scrollOffset--;
-    } else if (matchesKey(data, "down") || data === "j" || data === "e" || data === "f") {
-      this.scrollOffset++;
-    } else if (data === "u") {
-      this.scrollOffset -= Math.max(1, Math.floor(this.visibleBodyLines / 2));
-    } else if (data === "d") {
-      this.scrollOffset += Math.max(1, Math.floor(this.visibleBodyLines / 2));
-    } else if (data === "g") {
-      this.scrollOffset = 0;
-    } else if (data === "G") {
-      this.scrollOffset = this.bodyLineCount;
-    } else {
-      return;
-    }
-
+    this.applyScrollAction(action);
     this.clampScroll();
     this.requestRender();
   }
 
   invalidate(): void {
-    this.title.invalidate();
     this.markdown.setText(this.response);
     this.markdown.invalidate();
+  }
+
+  private renderTitle(width: number): string[] {
+    return new Text(this.theme.fg("accent", this.theme.bold(VIEWER_TITLE)), 1, 0).render(width);
+  }
+
+  private renderBody(width: number): string[] {
+    const bodyLines = this.markdown.render(width);
+    this.bodyLineCount = bodyLines.length;
+    return bodyLines;
+  }
+
+  private renderFooterForLayout(width: number): string[] {
+    return new Text(this.theme.fg("dim", SCROLL_HELP_TEXT), 1, 0).render(width);
+  }
+
+  private renderFooter(width: number, lineRange: VisibleLineRange): string[] {
+    const lineText = `Line ${lineRange.firstLine}-${lineRange.lastLine} of ${this.bodyLineCount || 1}`;
+    const footerText = `${lineText} - ${SCROLL_HELP_TEXT}`;
+    return new Text(this.theme.fg("dim", footerText), 1, 0).render(width);
+  }
+
+  private getVisibleBodyLineCount(titleLineCount: number, footerLineCount: number): number {
+    return Math.max(1, this.terminalRows() - titleLineCount - footerLineCount);
+  }
+
+  private getVisibleLineRange(): VisibleLineRange {
+    const totalLines = this.bodyLineCount || 1;
+    const firstLine = Math.min(this.scrollOffset + 1, totalLines);
+    const lastLine = this.bodyLineCount
+      ? Math.min(this.scrollOffset + this.visibleBodyLines, this.bodyLineCount)
+      : 1;
+
+    return { firstLine, lastLine };
+  }
+
+  private applyScrollAction(action: Exclude<ScrollAction, "close">): void {
+    if (action === "lineUp") {
+      this.scrollOffset--;
+    } else if (action === "lineDown") {
+      this.scrollOffset++;
+    } else if (action === "halfPageUp") {
+      this.scrollOffset -= Math.max(1, Math.floor(this.visibleBodyLines / 2));
+    } else if (action === "halfPageDown") {
+      this.scrollOffset += Math.max(1, Math.floor(this.visibleBodyLines / 2));
+    } else if (action === "top") {
+      this.scrollOffset = 0;
+    } else {
+      this.scrollOffset = this.bodyLineCount;
+    }
   }
 
   private clampScroll(): void {
@@ -137,11 +205,11 @@ async function showLastResponse(ctx: ExtensionContext): Promise<void> {
     return;
   }
 
-  let requestFullRender = (): void => {};
+  let requestBaseScreenRender = (): void => {};
 
   await ctx.ui.custom<void>(
     (tui, theme, _keybindings, done) => {
-      requestFullRender = () => tui.requestRender(true);
+      requestBaseScreenRender = () => tui.requestRender(true);
 
       return new LastResponseViewer(
         response,
@@ -154,24 +222,15 @@ async function showLastResponse(ctx: ExtensionContext): Promise<void> {
         theme,
       );
     },
-    {
-      overlay: true,
-      overlayOptions: {
-        anchor: "top-left",
-        row: 0,
-        col: 0,
-        width: "100%",
-        maxHeight: "100%",
-      },
-    },
+    VIEWER_OVERLAY_OPTIONS,
   );
 
-  requestFullRender();
+  requestBaseScreenRender();
 }
 
-export default function (pi: ExtensionAPI) {
-  pi.registerShortcut("alt+o", {
-    description: "Render the last assistant response with pi TUI",
+export default function renderLastResponseExtension(pi: ExtensionAPI) {
+  pi.registerShortcut(VIEWER_SHORTCUT, {
+    description: VIEWER_SHORTCUT_DESCRIPTION,
     handler: showLastResponse,
   });
 }
