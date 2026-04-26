@@ -7,8 +7,6 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Markdown, Text, matchesKey, type Component } from "@mariozechner/pi-tui";
 
-const SHORTCUT = "alt+o";
-
 function extractTextBlocks(content: unknown): string[] {
   if (!Array.isArray(content)) return [];
 
@@ -172,7 +170,7 @@ async function showLastResponse(ctx: ExtensionContext): Promise<void> {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerShortcut(SHORTCUT, {
+  pi.registerShortcut("alt+o", {
     description: "Render the last assistant response with pi TUI",
     handler: showLastResponse,
   });
