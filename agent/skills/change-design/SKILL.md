@@ -1,6 +1,6 @@
 ---
 name: change-design
-description: Default skill for any task that may lead to code changes. Use at the start of features, fixes, refactors, tests, migrations, behavior changes, or implementation plans.
+description: Default skill for code-change planning. Use at the start of any task that may lead to code changes, including features, fixes, debugging, refactors, tests, migrations, behavior changes, design discussions, implementation plans, or investigations. Guides scope definition, codebase exploration, user interview, success criteria, verification planning, tradeoff analysis, and durable project-memory updates.
 ---
 
 Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
@@ -8,6 +8,13 @@ Interview me relentlessly about every aspect of this plan until we reach a share
 Ask the questions one at a time, waiting for feedback on each question before continuing.
 
 If a question can be answered by exploring the codebase, explore the codebase instead.
+
+Main branches:
+
+1. **Goal** - what problem are we solving?
+2. **Scope** - what will change and what will not change?
+3. **Verification** - how will we know the change worked?
+4. **Memory** - does this resolve durable context worth documenting?
 
 ## Domain awareness
 
