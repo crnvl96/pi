@@ -13,6 +13,18 @@ function setMinimalFooter(ctx: ExtensionContext) {
 export default function (pi: ExtensionAPI) {
   let enabled = true;
 
+  function toggleFooter(ctx: ExtensionContext) {
+    enabled = !enabled;
+
+    if (enabled) {
+      setMinimalFooter(ctx);
+      ctx.ui.notify("Custom footer enabled", "info");
+    } else {
+      ctx.ui.setFooter(undefined);
+      ctx.ui.notify("Default footer restored", "info");
+    }
+  }
+
   pi.on("session_start", (_event, ctx) => {
     setMinimalFooter(ctx);
   });
@@ -20,15 +32,14 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("footer", {
     description: "Toggle custom footer",
     handler: async (_args, ctx) => {
-      enabled = !enabled;
+      toggleFooter(ctx);
+    },
+  });
 
-      if (enabled) {
-        setMinimalFooter(ctx);
-        ctx.ui.notify("Custom footer enabled", "info");
-      } else {
-        ctx.ui.setFooter(undefined);
-        ctx.ui.notify("Default footer restored", "info");
-      }
+  pi.registerShortcut("alt+,", {
+    description: "Toggle custom footer",
+    handler: async (ctx) => {
+      toggleFooter(ctx);
     },
   });
 }

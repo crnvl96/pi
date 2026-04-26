@@ -130,11 +130,14 @@ export default function (pi: ExtensionAPI) {
     name: "web_search",
     label: "Perplexity Web Search",
     description: "Search the web and return concise page context for the agent.",
-    promptSnippet: "Search the web when external context would help answer the user.",
+    promptSnippet:
+      "Search the web only after identifying the external fact needed and why local context is insufficient.",
     promptGuidelines: [
       "Use this tool only when local context is not enough or current external information is needed.",
-      "Write one focused search query.",
-      "Use the returned snippets as context and cite URLs when relevant.",
+      "If the need is unclear, state the uncertainty or ask instead of searching speculatively.",
+      "Write one focused search query that directly serves the user's current goal.",
+      "Use the returned snippets as context, surface uncertainty, and cite URLs when relevant.",
+      "Do not broaden scope or add follow-up research unless the result is needed to complete the task.",
     ],
     parameters: Type.Object({
       query: Type.String({

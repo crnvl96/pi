@@ -172,6 +172,7 @@ export default function (pi: ExtensionAPI) {
     label: "edit",
     description: defaults.edit.description,
     parameters: defaults.edit.parameters,
+    renderShell: "default",
 
     async execute(toolCallId, params, signal, onUpdate, ctx) {
       return getBuiltInTools(ctx.cwd).edit.execute(toolCallId, params, signal, onUpdate);
@@ -195,7 +196,12 @@ export default function (pi: ExtensionAPI) {
       if (!details?.diff) return new Text(theme.fg("success", "applied"), 0, 0);
 
       const stats = countDiffLines(details.diff);
-      let text = `${theme.fg("success", `+${stats.additions}`)} ${theme.fg("dim", "/")} ${theme.fg("error", `-${stats.removals}`)}`;
+      let text = theme.fg("success", "applied");
+      text += theme.fg("dim", " (");
+      text += theme.fg("toolDiffAdded", `+${stats.additions}`);
+      text += theme.fg("dim", " ");
+      text += theme.fg("toolDiffRemoved", `-${stats.removals}`);
+      text += theme.fg("dim", ")");
 
       if (expanded) {
         const diffLines = details.diff.split("\n");
