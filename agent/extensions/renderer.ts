@@ -5,27 +5,77 @@ import type {
   ReadToolDetails,
 } from "@mariozechner/pi-coding-agent";
 import {
-  createBashTool,
-  createEditTool,
-  createReadTool,
-  createWriteTool,
+  createBashToolDefinition,
+  createEditToolDefinition,
+  createReadToolDefinition,
+  createWriteToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 
-export default function (pi: ExtensionAPI) {
-  const cwd = process.cwd();
+const READ_PREVIEW_LINE_LIMIT = 15;
+const BASH_PREVIEW_LINE_LIMIT = 20;
+const DIFF_PREVIEW_LINE_LIMIT = 30;
+const WRITE_PREVIEW_LINE_LIMIT = 30;
+const COMMAND_PREVIEW_WIDTH = 80;
 
-  // --- Read tool: show path and line count ---
-  const originalRead = createReadTool(cwd);
+type ToolContent = {
+  type: string;
+  text?: string;
+};
+
+type DiffStats = {
+  additions: number;
+  removals: number;
+};
+
+function renderText(text: string): Text {
+  return new Text(text, 0, 0);
+}
+
+function truncateCommand(command: string): string {
+  if (command.length <= COMMAND_PREVIEW_WIDTH) return command;
+  return `${command.slice(0, COMMAND_PREVIEW_WIDTH - 3)}...`;
+}
+
+function getFirstTextContent(content: readonly ToolContent[]): string | undefined {
+  const first = content[0];
+  return first?.type === "text" ? first.text : undefined;
+}
+
+function getErrorLine(text: string | undefined): string | undefined {
+  if (!text?.startsWith("Error")) return undefined;
+  return text.split("\n")[0];
+}
+
+function countNonEmptyLines(text: string): number {
+  return text.split("\n").filter((line) => line.trim()).length;
+}
+
+function isDiffAddition(line: string): boolean {
+  return line.startsWith("+") && !line.startsWith("+++");
+}
+
+function isDiffRemoval(line: string): boolean {
+  return line.startsWith("-") && !line.startsWith("---");
+}
+
+function countDiffStats(diffLines: string[]): DiffStats {
+  let additions = 0;
+  let removals = 0;
+
+  for (const line of diffLines) {
+    if (isDiffAddition(line)) additions++;
+    if (isDiffRemoval(line)) removals++;
+  }
+
+  return { additions, removals };
+}
+
+function registerReadRenderer(pi: ExtensionAPI, cwd: string): void {
+  const readTool = createReadToolDefinition(cwd);
+
   pi.registerTool({
-    name: "read",
-    label: "read",
-    description: originalRead.description,
-    parameters: originalRead.parameters,
-
-    async execute(toolCallId, params, signal, onUpdate) {
-      return originalRead.execute(toolCallId, params, signal, onUpdate);
-    },
+    ...readTool,
 
     renderCall(args, theme, _context) {
       let text = theme.fg("toolTitle", theme.bold("read "));
@@ -36,24 +86,26 @@ export default function (pi: ExtensionAPI) {
         if (args.limit) parts.push(`limit=${args.limit}`);
         text += theme.fg("dim", ` (${parts.join(", ")})`);
       }
-      return new Text(text, 0, 0);
+      return renderText(text);
     },
 
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial) return new Text(theme.fg("warning", "Reading..."), 0, 0);
+      if (isPartial) return renderText(theme.fg("warning", "Reading..."));
 
       const details = result.details as ReadToolDetails | undefined;
       const content = result.content[0];
 
       if (content?.type === "image") {
-        return new Text(theme.fg("success", "Image loaded"), 0, 0);
+        return renderText(theme.fg("success", "Image loaded"));
       }
 
-      if (content?.type !== "text") {
-        return new Text(theme.fg("error", "No content"), 0, 0);
+      const textContent = getFirstTextContent(result.content);
+      if (textContent === undefined) {
+        return renderText(theme.fg("error", "No content"));
       }
 
-      const lineCount = content.text.split("\n").length;
+      const lines = textContent.split("\n");
+      const lineCount = lines.length;
       let text = theme.fg("success", `${lineCount} lines`);
 
       if (details?.truncation?.truncated) {
@@ -61,51 +113,44 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (expanded) {
-        const lines = content.text.split("\n").slice(0, 15);
-        for (const line of lines) {
+        for (const line of lines.slice(0, READ_PREVIEW_LINE_LIMIT)) {
           text += `\n${theme.fg("dim", line)}`;
         }
-        if (lineCount > 15) {
-          text += `\n${theme.fg("muted", `... ${lineCount - 15} more lines`)}`;
+        if (lineCount > READ_PREVIEW_LINE_LIMIT) {
+          text += `\n${theme.fg("muted", `... ${lineCount - READ_PREVIEW_LINE_LIMIT} more lines`)}`;
         }
       }
 
-      return new Text(text, 0, 0);
+      return renderText(text);
     },
   });
+}
 
-  // --- Bash tool: show command and exit code ---
-  const originalBash = createBashTool(cwd);
+function registerBashRenderer(pi: ExtensionAPI, cwd: string): void {
+  const bashTool = createBashToolDefinition(cwd);
+
   pi.registerTool({
-    name: "bash",
-    label: "bash",
-    description: originalBash.description,
-    parameters: originalBash.parameters,
-
-    async execute(toolCallId, params, signal, onUpdate) {
-      return originalBash.execute(toolCallId, params, signal, onUpdate);
-    },
+    ...bashTool,
 
     renderCall(args, theme, _context) {
       let text = theme.fg("toolTitle", theme.bold("$ "));
-      const cmd = args.command.length > 80 ? `${args.command.slice(0, 77)}...` : args.command;
-      text += theme.fg("accent", cmd);
+      text += theme.fg("accent", truncateCommand(args.command));
       if (args.timeout) {
         text += theme.fg("dim", ` (timeout: ${args.timeout}s)`);
       }
-      return new Text(text, 0, 0);
+      return renderText(text);
     },
 
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial) return new Text(theme.fg("warning", "Running..."), 0, 0);
+      if (isPartial) return renderText(theme.fg("warning", "Running..."));
 
       const details = result.details as BashToolDetails | undefined;
-      const content = result.content[0];
-      const output = content?.type === "text" ? content.text : "";
+      const output = getFirstTextContent(result.content) ?? "";
+      const outputLines = output.split("\n");
 
       const exitMatch = output.match(/exit code: (\d+)/);
       const exitCode = exitMatch ? parseInt(exitMatch[1], 10) : null;
-      const lineCount = output.split("\n").filter((l) => l.trim()).length;
+      const lineCount = countNonEmptyLines(output);
 
       let text = "";
       if (exitCode === 0 || exitCode === null) {
@@ -120,93 +165,74 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (expanded) {
-        const lines = output.split("\n").slice(0, 20);
-        for (const line of lines) {
+        for (const line of outputLines.slice(0, BASH_PREVIEW_LINE_LIMIT)) {
           text += `\n${theme.fg("dim", line)}`;
         }
-        if (output.split("\n").length > 20) {
+        if (outputLines.length > BASH_PREVIEW_LINE_LIMIT) {
           text += `\n${theme.fg("muted", "... more output")}`;
         }
       }
 
-      return new Text(text, 0, 0);
+      return renderText(text);
     },
   });
+}
 
-  // --- Edit tool: show path and diff stats ---
-  const originalEdit = createEditTool(cwd);
+function registerEditRenderer(pi: ExtensionAPI, cwd: string): void {
+  const editTool = createEditToolDefinition(cwd);
+
   pi.registerTool({
-    name: "edit",
-    label: "edit",
-    description: originalEdit.description,
-    parameters: originalEdit.parameters,
-    renderShell: "self",
-
-    async execute(toolCallId, params, signal, onUpdate) {
-      return originalEdit.execute(toolCallId, params, signal, onUpdate);
-    },
+    ...editTool,
 
     renderCall(args, theme, _context) {
       let text = theme.fg("toolTitle", theme.bold("edit "));
       text += theme.fg("accent", args.path);
-      return new Text(text, 0, 0);
+      return renderText(text);
     },
 
     renderResult(result, { isPartial }, theme, _context) {
-      if (isPartial) return new Text(theme.fg("warning", "Editing..."), 0, 0);
+      if (isPartial) return renderText(theme.fg("warning", "Editing..."));
 
       const details = result.details as EditToolDetails | undefined;
-      const content = result.content[0];
-
-      if (content?.type === "text" && content.text.startsWith("Error")) {
-        return new Text(theme.fg("error", content.text.split("\n")[0]), 0, 0);
+      const errorLine = getErrorLine(getFirstTextContent(result.content));
+      if (errorLine) {
+        return renderText(theme.fg("error", errorLine));
       }
 
       if (!details?.diff) {
-        return new Text(theme.fg("success", "Applied"), 0, 0);
+        return renderText(theme.fg("success", "Applied"));
       }
 
-      // Count additions and removals from the diff
       const diffLines = details.diff.split("\n");
-      let additions = 0;
-      let removals = 0;
-      for (const line of diffLines) {
-        if (line.startsWith("+") && !line.startsWith("+++")) additions++;
-        if (line.startsWith("-") && !line.startsWith("---")) removals++;
-      }
+      const { additions, removals } = countDiffStats(diffLines);
 
       let text = theme.fg("success", `+${additions}`);
       text += theme.fg("dim", " / ");
       text += theme.fg("error", `-${removals}`);
 
-      for (const line of diffLines.slice(0, 30)) {
-        if (line.startsWith("+") && !line.startsWith("+++")) {
+      for (const line of diffLines.slice(0, DIFF_PREVIEW_LINE_LIMIT)) {
+        if (isDiffAddition(line)) {
           text += `\n${theme.fg("success", line)}`;
-        } else if (line.startsWith("-") && !line.startsWith("---")) {
+        } else if (isDiffRemoval(line)) {
           text += `\n${theme.fg("error", line)}`;
         } else {
           text += `\n${theme.fg("dim", line)}`;
         }
       }
-      if (diffLines.length > 30) {
-        text += `\n${theme.fg("muted", `... ${diffLines.length - 30} more diff lines`)}`;
+      if (diffLines.length > DIFF_PREVIEW_LINE_LIMIT) {
+        text += `\n${theme.fg("muted", `... ${diffLines.length - DIFF_PREVIEW_LINE_LIMIT} more diff lines`)}`;
       }
 
-      return new Text(text, 0, 0);
+      return renderText(text);
     },
   });
+}
 
-  // --- Write tool: show path and size ---
-  const originalWrite = createWriteTool(cwd);
+function registerWriteRenderer(pi: ExtensionAPI, cwd: string): void {
+  const writeTool = createWriteToolDefinition(cwd);
+
   pi.registerTool({
-    name: "write",
-    label: "write",
-    description: originalWrite.description,
-    parameters: originalWrite.parameters,
-
-    async execute(toolCallId, params, signal, onUpdate) {
-      return originalWrite.execute(toolCallId, params, signal, onUpdate);
-    },
+    ...writeTool,
 
     renderCall(args, theme, _context) {
       let text = theme.fg("toolTitle", theme.bold("write "));
@@ -214,25 +240,34 @@ export default function (pi: ExtensionAPI) {
       const lines = args.content.split("\n");
       text += theme.fg("dim", ` (${lines.length} lines)`);
 
-      for (const line of lines.slice(0, 30)) {
+      for (const line of lines.slice(0, WRITE_PREVIEW_LINE_LIMIT)) {
         text += `\n${theme.fg("dim", line)}`;
       }
-      if (lines.length > 30) {
-        text += `\n${theme.fg("muted", `... ${lines.length - 30} more lines`)}`;
+      if (lines.length > WRITE_PREVIEW_LINE_LIMIT) {
+        text += `\n${theme.fg("muted", `... ${lines.length - WRITE_PREVIEW_LINE_LIMIT} more lines`)}`;
       }
 
-      return new Text(text, 0, 0);
+      return renderText(text);
     },
 
     renderResult(result, { isPartial }, theme, _context) {
-      if (isPartial) return new Text(theme.fg("warning", "Writing..."), 0, 0);
+      if (isPartial) return renderText(theme.fg("warning", "Writing..."));
 
-      const content = result.content[0];
-      if (content?.type === "text" && content.text.startsWith("Error")) {
-        return new Text(theme.fg("error", content.text.split("\n")[0]), 0, 0);
+      const errorLine = getErrorLine(getFirstTextContent(result.content));
+      if (errorLine) {
+        return renderText(theme.fg("error", errorLine));
       }
 
-      return new Text(theme.fg("success", "Written"), 0, 0);
+      return renderText(theme.fg("success", "Written"));
     },
   });
+}
+
+export default function toolRendererExtension(pi: ExtensionAPI) {
+  const cwd = process.cwd();
+
+  registerReadRenderer(pi, cwd);
+  registerBashRenderer(pi, cwd);
+  registerEditRenderer(pi, cwd);
+  registerWriteRenderer(pi, cwd);
 }
