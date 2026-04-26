@@ -138,11 +138,13 @@ export default function (pi: ExtensionAPI) {
       "Use web_search autonomously when current external information, references, examples, use cases, docs, or real-world context would materially improve the answer.",
       "Use web_search when planning or designing code changes if external sources could help present alternatives, use cases, examples, or tradeoffs suitable for the scope being discussed.",
       "Use web_search before locking in decisions that depend on facts outside the repo, assumptions that should be validated, or tradeoffs where external references would help.",
+      "Use web_search with one focused query that directly serves the user's current goal.",
+      "After using web_search, use the returned snippets as context, surface uncertainty, and cite URLs when relevant.",
       "Do not use web_search for purely local codebase questions, stable general knowledge, or anything that can be verified from local files.",
     ],
     parameters: Type.Object({
       query: Type.String({
-        description: "Search query",
+        description: "Focused web search query for the current external information need.",
       }),
     }),
     execute: async (_toolCallId, params, signal) => {
