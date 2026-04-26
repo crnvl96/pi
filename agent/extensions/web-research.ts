@@ -129,16 +129,16 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "web_search",
     label: "Perplexity Web Search",
-    description: "Search the web or internet and return concise page context for the agent.",
+    description:
+      "Search online to validate assumptions, find references, enrich context, and return concise page context.",
     promptSnippet:
-      "Use web_search when the user asks to search, look, research, or google something online or on the internet.",
+      "Use web_search when the user asks to search, look, research, or google something online, or when external context would help validate, enrich, compare, or ground a decision.",
     promptGuidelines: [
-      "Use web_search when the user's prompt semantically asks to search, look, research, or google something online or on the internet.",
-      "Use web_search when local context is not enough or current external information is needed.",
-      "If the need is unclear, state the uncertainty or ask instead of searching speculatively.",
-      "Write one focused search query that directly serves the user's current goal.",
-      "Use the returned snippets as context, surface uncertainty, and cite URLs when relevant.",
-      "Do not broaden scope or add follow-up research unless the result is needed to complete the task.",
+      "Use web_search when the user's prompt semantically asks to search, look, research, or google something online.",
+      "Use web_search autonomously when current external information, references, examples, use cases, docs, or real-world context would materially improve the answer.",
+      "Use web_search when planning or designing code changes if external sources could help present alternatives, use cases, examples, or tradeoffs suitable for the scope being discussed.",
+      "Use web_search before locking in decisions that depend on facts outside the repo, assumptions that should be validated, or tradeoffs where external references would help.",
+      "Do not use web_search for purely local codebase questions, stable general knowledge, or anything that can be verified from local files.",
     ],
     parameters: Type.Object({
       query: Type.String({
