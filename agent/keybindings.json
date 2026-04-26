@@ -12,10 +12,10 @@
   "tui.select.up": ["up", "ctrl+p"],
   "tui.select.down": ["down", "ctrl+n"],
 
-  "app.model.cycleForward": [],
-  "app.model.cycleBackward": [],
-
   "app.session.tree": ["alt+t"],
   "app.session.fork": ["alt+f"],
-  "app.session.resume": ["alt+s"]
+  "app.session.resume": ["alt+s"],
+
+  "app.model.cycleForward": [],
+  "app.model.cycleBackward": []
 }
