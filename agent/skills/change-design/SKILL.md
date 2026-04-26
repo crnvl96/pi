@@ -1,6 +1,6 @@
 ---
-name: domain-model
-description: Use when designing plans that will change the codebase, or during interview sessions that aim to build shared understanding of the codebase.
+name: change-design
+description: Default skill for any task that may lead to code changes. Use at the start of features, fixes, refactors, tests, migrations, behavior changes, or implementation plans.
 ---
 
 Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.

@@ -1,6 +1,6 @@
 ---
 name: refactor
-description: Use when implementing refactor changes in the codebase, including designing and discussing refactor plans.
+description: Use when the agreed scope includes structural refactoring, module boundaries, interfaces, seams, abstractions, dependencies, depth, locality, architecture changes, or when implementing, designing, or discussing refactor plans; These refactoring techniques should guide planning and implementation steps whenever suitable.
 ---
 
 Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
