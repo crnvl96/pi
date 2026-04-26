@@ -184,7 +184,7 @@ export default function (pi: ExtensionAPI) {
       return new Text(`${theme.fg("toolTitle", theme.bold("edit"))} ${path}${count}`, 0, 0);
     },
 
-    renderResult(result, { expanded, isPartial }, theme, _context) {
+    renderResult(result, { isPartial }, theme, _context) {
       if (isPartial) return new Text(theme.fg("warning", "editing"), 0, 0);
 
       const output = firstText(result);
@@ -203,16 +203,14 @@ export default function (pi: ExtensionAPI) {
       text += theme.fg("toolDiffRemoved", `-${stats.removals}`);
       text += theme.fg("dim", ")");
 
-      if (expanded) {
-        const diffLines = details.diff.split("\n");
-        for (const line of diffLines.slice(0, DIFF_PREVIEW_LINES)) {
-          if (line.startsWith("+") && !line.startsWith("+++")) text += `\n${theme.fg("success", line)}`;
-          else if (line.startsWith("-") && !line.startsWith("---")) text += `\n${theme.fg("error", line)}`;
-          else text += `\n${theme.fg("dim", line)}`;
-        }
-        if (diffLines.length > DIFF_PREVIEW_LINES) {
-          text += `\n${theme.fg("muted", `... ${diffLines.length - DIFF_PREVIEW_LINES} more diff lines`)}`;
-        }
+      const diffLines = details.diff.split("\n");
+      for (const line of diffLines.slice(0, DIFF_PREVIEW_LINES)) {
+        if (line.startsWith("+") && !line.startsWith("+++")) text += `\n${theme.fg("success", line)}`;
+        else if (line.startsWith("-") && !line.startsWith("---")) text += `\n${theme.fg("error", line)}`;
+        else text += `\n${theme.fg("dim", line)}`;
+      }
+      if (diffLines.length > DIFF_PREVIEW_LINES) {
+        text += `\n${theme.fg("muted", `... ${diffLines.length - DIFF_PREVIEW_LINES} more diff lines`)}`;
       }
 
       return new Text(text, 0, 0);

@@ -129,11 +129,12 @@ export default function (pi: ExtensionAPI) {
   pi.registerTool({
     name: "web_search",
     label: "Perplexity Web Search",
-    description: "Search the web and return concise page context for the agent.",
+    description: "Search the web or internet and return concise page context for the agent.",
     promptSnippet:
-      "Search the web only after identifying the external fact needed and why local context is insufficient.",
+      "Use web_search when the user asks to search, look, research, or google something online or on the internet.",
     promptGuidelines: [
-      "Use this tool only when local context is not enough or current external information is needed.",
+      "Use web_search when the user's prompt semantically asks to search, look, research, or google something online or on the internet.",
+      "Use web_search when local context is not enough or current external information is needed.",
       "If the need is unclear, state the uncertainty or ask instead of searching speculatively.",
       "Write one focused search query that directly serves the user's current goal.",
       "Use the returned snippets as context, surface uncertainty, and cite URLs when relevant.",
