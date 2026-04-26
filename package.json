@@ -2,9 +2,15 @@
   "name": "pi-config",
   "private": true,
   "type": "module",
-  "scripts": {},
+  "scripts": {
+    "typecheck": "tsgo --noEmit --project tsconfig.json",
+    "lint": "oxlint ."
+  },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "^0.70.2",
-    "@perplexity-ai/perplexity_ai": "^0.27.0"
+    "@perplexity-ai/perplexity_ai": "^0.27.0",
+    "@typescript/native-preview": "^7.0.0-dev.20260426.1",
+    "oxfmt": "^0.46.0",
+    "oxlint": "^1.61.0"
   }
 }

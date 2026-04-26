@@ -17,6 +17,7 @@ const DEFAULT_MAX_RESULTS = 5;
 const DEFAULT_MAX_TOKENS = 20000;
 const DEFAULT_MAX_TOKENS_PER_PAGE = 4096;
 const DEFAULT_SEARCH_LANGUAGE_FILTER = ["en"];
+const MAX_QUERY_WIDTH = 80;
 
 type WebSearchResultHeader = {
   title: string;
@@ -78,6 +79,11 @@ function getDomain(url: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function truncateText(text: string, maxWidth = MAX_QUERY_WIDTH): string {
+  if (text.length <= maxWidth) return text;
+  return `${text.slice(0, maxWidth - 3)}...`;
 }
 
 function toResultHeader(page: SearchCreateResponse.Result): WebSearchResultHeader {
@@ -163,42 +169,35 @@ export default function (pi: ExtensionAPI) {
       };
     },
     renderCall(args, theme, _context) {
-      return new Text(
-        theme.fg("toolTitle", theme.bold("web_search ")) +
-          theme.fg("accent", `"${String(args.query ?? "")}"`),
-        0,
-        0,
-      );
+      const query = theme.fg("accent", truncateText(String(args.query ?? "...")));
+      return new Text(`${theme.fg("toolTitle", theme.bold("web_search"))} ${query}`, 0, 0);
     },
 
     renderResult(result, { expanded, isPartial }, theme, _context) {
-      if (isPartial) return new Text(theme.fg("warning", "Searching..."), 0, 0);
+      if (isPartial) return new Text(theme.fg("warning", "searching"), 0, 0);
 
       const content = result.content[0];
-      if (content?.type === "text" && content.text.startsWith("Error")) {
+      if (content?.type === "text" && content.text.toLowerCase().startsWith("error")) {
         return new Text(theme.fg("error", content.text.split("\n")[0]), 0, 0);
       }
 
       const details = result.details as Partial<WebSearchToolDetails> | undefined;
       const headers = details?.results ?? [];
       const resultCount = details?.resultCount ?? headers.length;
+      const countText = resultCount === 1 ? "1 result" : `${resultCount} results`;
 
-      let text = theme.fg("success", resultCount === 1 ? "1 result" : `${resultCount} results`);
+      let text = theme.fg("success", countText);
+      if (!expanded) return new Text(text, 0, 0);
 
       for (const [index, header] of headers.entries()) {
+        const meta: string[] = [];
+        if (header.domain) meta.push(header.domain);
+        if (header.date) meta.push(`published: ${header.date}`);
+        if (header.lastUpdated) meta.push(`updated: ${header.lastUpdated}`);
+
         text += `\n${theme.fg("accent", `[${index + 1}] ${header.title}`)}`;
-
-        if (expanded) {
-          const meta: string[] = [];
-          if (header.domain) meta.push(header.domain);
-          if (header.date) meta.push(`published: ${header.date}`);
-          if (header.lastUpdated) meta.push(`updated: ${header.lastUpdated}`);
-
-          text += `\n${theme.fg("dim", header.url)}`;
-          if (meta.length > 0) {
-            text += `\n${theme.fg("dim", meta.join(" | "))}`;
-          }
-        }
+        text += `\n${theme.fg("dim", header.url)}`;
+        if (meta.length > 0) text += `\n${theme.fg("dim", meta.join(" | "))}`;
       }
 
       return new Text(text, 0, 0);
