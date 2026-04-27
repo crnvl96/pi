@@ -127,7 +127,13 @@ function registerReadRenderer(pi: ExtensionAPI, cwd: string): void {
 }
 
 function registerBashRenderer(pi: ExtensionAPI, cwd: string): void {
-  const bashTool = createBashToolDefinition(cwd);
+  const bashTool = createBashToolDefinition(cwd, {
+    spawnHook: ({ command, cwd, env }) => ({
+      command: `source ~/.profile\n${command}`,
+      cwd,
+      env: { ...env },
+    }),
+  });
 
   pi.registerTool({
     ...bashTool,
@@ -265,7 +271,6 @@ function registerWriteRenderer(pi: ExtensionAPI, cwd: string): void {
 
 export default function toolRendererExtension(pi: ExtensionAPI) {
   const cwd = process.cwd();
-
   registerReadRenderer(pi, cwd);
   registerBashRenderer(pi, cwd);
   registerEditRenderer(pi, cwd);
