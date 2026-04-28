@@ -4,41 +4,6 @@ import { Key, Markdown, matchesKey, truncateToWidth, visibleWidth, type Componen
 const CHROME_LINES = 4;
 const TAB_REPLACEMENT = "    ";
 
-export default function renderLastResponseExtension(pi: ExtensionAPI) {
-  pi.registerCommand("ext:last", {
-    description: "Render the last assistant response as markdown in a full-screen scrollable overlay",
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      const response = findLastAssistantResponse(ctx);
-      if (!response) {
-        ctx.ui.notify("No assistant response found", "warning");
-        return;
-      }
-
-      if (!ctx.hasUI) {
-        pi.sendMessage(
-          { customType: "render-last-response", content: response, display: true },
-          { triggerTurn: false },
-        );
-        return;
-      }
-
-      await ctx.ui.custom<void>(
-        (tui, theme, _keybindings, done) =>
-          new LastResponseOverlay(response, tui, theme, () => done(undefined)),
-        {
-          overlay: true,
-          overlayOptions: {
-            anchor: "top-left",
-            width: "100%",
-            maxHeight: "100%",
-            margin: 0,
-          },
-        },
-      );
-    },
-  });
-}
-
 class LastResponseOverlay implements Component {
   private readonly markdown: Markdown;
   private scroll = 0;
@@ -176,4 +141,39 @@ function fit(text: string, width: number): string {
   const fitted = truncateToWidth(normalized, maxWidth, "...", true);
   if (visibleWidth(fitted) <= maxWidth) return fitted;
   return truncateToWidth(fitted, maxWidth, "", true);
+}
+
+export default function renderLastResponseExtension(pi: ExtensionAPI) {
+  pi.registerCommand("ext:last", {
+    description: "Render the last assistant response as markdown in a full-screen scrollable overlay",
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
+      const response = findLastAssistantResponse(ctx);
+      if (!response) {
+        ctx.ui.notify("No assistant response found", "warning");
+        return;
+      }
+
+      if (!ctx.hasUI) {
+        pi.sendMessage(
+          { customType: "render-last-response", content: response, display: true },
+          { triggerTurn: false },
+        );
+        return;
+      }
+
+      await ctx.ui.custom<void>(
+        (tui, theme, _keybindings, done) =>
+          new LastResponseOverlay(response, tui, theme, () => done(undefined)),
+        {
+          overlay: true,
+          overlayOptions: {
+            anchor: "top-left",
+            width: "100%",
+            maxHeight: "100%",
+            margin: 0,
+          },
+        },
+      );
+    },
+  });
 }

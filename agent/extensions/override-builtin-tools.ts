@@ -30,6 +30,7 @@ import type {
   EditToolDetails,
   ExtensionAPI,
   ReadToolDetails,
+  ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
 import {
   createBashTool,
@@ -39,12 +40,15 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
 
-export default function (pi: ExtensionAPI) {
-  const cwd = process.cwd();
+type ReadToolOverride = ToolDefinition<ReturnType<typeof createReadTool>["parameters"], ReadToolDetails>;
+type BashToolOverride = ToolDefinition<ReturnType<typeof createBashTool>["parameters"], BashToolDetails>;
+type EditToolOverride = ToolDefinition<ReturnType<typeof createEditTool>["parameters"], EditToolDetails>;
+type WriteToolOverride = ToolDefinition<ReturnType<typeof createWriteTool>["parameters"]>;
 
+function createReadToolOverride(cwd: string): ReadToolOverride {
   // --- Read tool: show path and line count ---
   const originalRead = createReadTool(cwd);
-  pi.registerTool({
+  return {
     name: "read",
     label: "read",
     description: originalRead.description,
@@ -99,8 +103,10 @@ export default function (pi: ExtensionAPI) {
 
       return new Text(text, 0, 0);
     },
-  });
+  };
+}
 
+function createBashToolOverride(cwd: string): BashToolOverride {
   // --- Bash tool: show command and exit code ---
 
   const originalBash = createBashTool(cwd, {
@@ -111,7 +117,7 @@ export default function (pi: ExtensionAPI) {
     }),
   });
 
-  pi.registerTool({
+  return {
     ...originalBash,
 
     name: "bash",
@@ -168,11 +174,13 @@ export default function (pi: ExtensionAPI) {
 
       return new Text(text, 0, 0);
     },
-  });
+  };
+}
 
+function createEditToolOverride(cwd: string): EditToolOverride {
   // --- Edit tool: show path and diff stats ---
   const originalEdit = createEditTool(cwd);
-  pi.registerTool({
+  return {
     name: "edit",
     label: "edit",
     description: originalEdit.description,
@@ -233,11 +241,13 @@ export default function (pi: ExtensionAPI) {
 
       return new Text(text, 0, 0);
     },
-  });
+  };
+}
 
+function createWriteToolOverride(cwd: string): WriteToolOverride {
   // --- Write tool: show path and size ---
   const originalWrite = createWriteTool(cwd);
-  pi.registerTool({
+  return {
     name: "write",
     label: "write",
     description: originalWrite.description,
@@ -265,5 +275,14 @@ export default function (pi: ExtensionAPI) {
 
       return new Text(theme.fg("success", "Written"), 0, 0);
     },
-  });
+  };
+}
+
+export default function (pi: ExtensionAPI) {
+  const cwd = process.cwd();
+
+  pi.registerTool(createReadToolOverride(cwd));
+  pi.registerTool(createBashToolOverride(cwd));
+  pi.registerTool(createEditToolOverride(cwd));
+  pi.registerTool(createWriteToolOverride(cwd));
 }

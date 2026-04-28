@@ -36,41 +36,6 @@ interface DiffDocument {
   anchors: string[];
 }
 
-export default function diffExtension(pi: ExtensionAPI) {
-  pi.registerCommand("ext:diff", {
-    description: "Render edit/write tool calls since the last user message in a scrollable overlay",
-    handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      const diff = findRecentEditAndWriteCalls(ctx);
-      if (!diff) {
-        ctx.ui.notify("No edit or write tool calls found since the last user message", "warning");
-        return;
-      }
-
-      if (!ctx.hasUI) {
-        pi.sendMessage(
-          { customType: "diff", content: diff.markdown, display: true },
-          { triggerTurn: false },
-        );
-        return;
-      }
-
-      await ctx.ui.custom<void>(
-        (tui, theme, _keybindings, done) =>
-          new DiffOverlay(diff, tui, theme, () => done(undefined)),
-        {
-          overlay: true,
-          overlayOptions: {
-            anchor: "top-left",
-            width: "100%",
-            maxHeight: "100%",
-            margin: 0,
-          },
-        },
-      );
-    },
-  });
-}
-
 class DiffOverlay implements Component {
   private readonly markdown: Markdown;
   private scroll = 0;
@@ -500,4 +465,39 @@ function fit(text: string, width: number): string {
   const fitted = truncateToWidth(normalized, maxWidth, "...", true);
   if (visibleWidth(fitted) <= maxWidth) return fitted;
   return truncateToWidth(fitted, maxWidth, "", true);
+}
+
+export default function diffExtension(pi: ExtensionAPI) {
+  pi.registerCommand("ext:diff", {
+    description: "Render edit/write tool calls since the last user message in a scrollable overlay",
+    handler: async (_args: string, ctx: ExtensionCommandContext) => {
+      const diff = findRecentEditAndWriteCalls(ctx);
+      if (!diff) {
+        ctx.ui.notify("No edit or write tool calls found since the last user message", "warning");
+        return;
+      }
+
+      if (!ctx.hasUI) {
+        pi.sendMessage(
+          { customType: "diff", content: diff.markdown, display: true },
+          { triggerTurn: false },
+        );
+        return;
+      }
+
+      await ctx.ui.custom<void>(
+        (tui, theme, _keybindings, done) =>
+          new DiffOverlay(diff, tui, theme, () => done(undefined)),
+        {
+          overlay: true,
+          overlayOptions: {
+            anchor: "top-left",
+            width: "100%",
+            maxHeight: "100%",
+            margin: 0,
+          },
+        },
+      );
+    },
+  });
 }

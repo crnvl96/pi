@@ -3,6 +3,25 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 const LAZYGIT_RE = /^\s*(lazygit|lzg|git)\s*$/;
 
+function runLazygit(ctx: ExtensionContext, cwd: string): Promise<number | null> {
+  return ctx.ui.custom<number | null>((tui, _theme, _keybindings, done) => {
+    tui.stop();
+    process.stdout.write("\x1b[2J\x1b[H");
+
+    const result = spawnSync("lazygit", [], {
+      cwd,
+      stdio: "inherit",
+      env: process.env,
+    });
+
+    tui.start();
+    tui.requestRender(true);
+    done(result.status ?? 1);
+
+    return { render: () => [], invalidate: () => {} };
+  });
+}
+
 export default function lzgExtension(pi: ExtensionAPI) {
   pi.on("user_bash", async (event, ctx) => {
     if (!LAZYGIT_RE.test(event.command)) return;
@@ -39,24 +58,5 @@ export default function lzgExtension(pi: ExtensionAPI) {
       if (!ctx.hasUI) return;
       await runLazygit(ctx, ctx.cwd);
     },
-  });
-}
-
-function runLazygit(ctx: ExtensionContext, cwd: string): Promise<number | null> {
-  return ctx.ui.custom<number | null>((tui, _theme, _keybindings, done) => {
-    tui.stop();
-    process.stdout.write("\x1b[2J\x1b[H");
-
-    const result = spawnSync("lazygit", [], {
-      cwd,
-      stdio: "inherit",
-      env: process.env,
-    });
-
-    tui.start();
-    tui.requestRender(true);
-    done(result.status ?? 1);
-
-    return { render: () => [], invalidate: () => {} };
   });
 }

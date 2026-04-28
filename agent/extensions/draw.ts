@@ -16,218 +16,6 @@ type SubmitResult = {
   inserted: boolean;
 };
 
-export default function (pi: ExtensionAPI) {
-  let server: Server | undefined;
-  let baseUrl: string | undefined;
-  let token = randomUUID();
-  let lastCtx: ExtensionContext | undefined;
-  let pageConnected = false;
-  const eventClients = new Set<ServerResponse>();
-
-  function setLastCtx(ctx: ExtensionContext) {
-    lastCtx = ctx;
-  }
-
-  function setPageConnected(connected: boolean) {
-    pageConnected = connected;
-    if (lastCtx?.hasUI) {
-      lastCtx.ui.setStatus("draw", connected ? "draw: open" : undefined);
-    }
-  }
-
-  function insertScreenshotIntoPrompt(path: string): boolean {
-    const ctx = lastCtx;
-    if (!ctx?.hasUI) return false;
-
-    const ref = `@${path}`;
-    const current = ctx.ui.getEditorText();
-    const separator = current.length === 0 || /\s$/.test(current) ? "" : " ";
-    ctx.ui.setEditorText(`${current}${separator}${ref}`);
-    ctx.ui.notify(`Added drawing to prompt: ${path}`, "info");
-    return true;
-  }
-
-  async function handleSubmit(req: IncomingMessage): Promise<SubmitResult> {
-    const body = await readRequestBody(req, MAX_UPLOAD_BYTES);
-    if (body.length === 0) {
-      throw httpError(400, "Empty screenshot upload.");
-    }
-    if (!isPng(body)) {
-      throw httpError(415, "Expected a PNG screenshot.");
-    }
-
-    const fileName = `pi-draw-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}.png`;
-    const filePath = join(TMP_DIR, fileName);
-    await writeFile(filePath, body, { mode: 0o600 });
-
-    const inserted = insertScreenshotIntoPrompt(filePath);
-    return { path: filePath, inserted };
-  }
-
-  async function handleRequest(req: IncomingMessage, res: ServerResponse) {
-    const url = new URL(req.url ?? "/", `http://${HOST}`);
-
-    if (req.method === "GET" && url.pathname === "/favicon.ico") {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
-    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/draw")) {
-      if (url.searchParams.get("token") !== token) {
-        writeText(res, 403, "Forbidden");
-        return;
-      }
-      writeHtml(res, renderDrawPage(token));
-      return;
-    }
-
-    if (req.method === "GET" && url.pathname === "/events") {
-      if (url.searchParams.get("token") !== token) {
-        writeText(res, 403, "Forbidden");
-        return;
-      }
-      handleEvents(req, res);
-      return;
-    }
-
-    if (req.method === "POST" && url.pathname === "/closed") {
-      if (url.searchParams.get("token") !== token) {
-        writeJson(res, 403, { ok: false, error: "Forbidden" });
-        return;
-      }
-      for (const client of eventClients) {
-        client.end();
-      }
-      eventClients.clear();
-      setPageConnected(false);
-      writeJson(res, 200, { ok: true });
-      return;
-    }
-
-    if (req.method === "POST" && url.pathname === "/submit") {
-      if (url.searchParams.get("token") !== token) {
-        writeJson(res, 403, { ok: false, error: "Forbidden" });
-        return;
-      }
-
-      try {
-        const result = await handleSubmit(req);
-        writeJson(res, 200, { ok: true, ...result });
-      } catch (error) {
-        const statusCode = getHttpStatus(error);
-        writeJson(res, statusCode, {
-          ok: false,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      return;
-    }
-
-    writeText(res, 404, "Not found");
-  }
-
-  function handleEvents(req: IncomingMessage, res: ServerResponse) {
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
-    });
-    res.write("event: ready\ndata: {}\n\n");
-    eventClients.add(res);
-    setPageConnected(true);
-
-    const ping = setInterval(() => {
-      if (!res.destroyed) res.write(": ping\n\n");
-    }, 15_000);
-
-    req.on("close", () => {
-      clearInterval(ping);
-      eventClients.delete(res);
-      setPageConnected(eventClients.size > 0);
-    });
-  }
-
-  async function ensureServer(): Promise<string> {
-    if (server && baseUrl) return baseUrl;
-
-    token = randomUUID();
-    server = createServer((req, res) => {
-      void handleRequest(req, res).catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        if (!res.headersSent) {
-          writeJson(res, 500, { ok: false, error: message });
-        } else {
-          res.end();
-        }
-      });
-    });
-
-    await new Promise<void>((resolve, reject) => {
-      server!.once("error", reject);
-      server!.listen(0, HOST, () => resolve());
-    });
-
-    const address = server.address();
-    if (!address || typeof address === "string") {
-      throw new Error("Could not determine draw server port.");
-    }
-
-    baseUrl = `http://${HOST}:${address.port}`;
-    return baseUrl;
-  }
-
-  async function openCanvas(ctx: ExtensionContext) {
-    setLastCtx(ctx);
-    const urlBase = await ensureServer();
-    const url = `${urlBase}/draw?token=${encodeURIComponent(token)}`;
-
-    try {
-      await openBrowser(url);
-      const message = pageConnected
-        ? "Drawing canvas reopened. Click Submit to add a screenshot to the prompt."
-        : "Drawing canvas opened. Click Submit to add a screenshot to the prompt.";
-      ctx.ui.notify(message, "info");
-    } catch (error) {
-      ctx.ui.notify(
-        `Could not open browser: ${error instanceof Error ? error.message : String(error)}. Open ${url} manually.`,
-        "error",
-      );
-    }
-  }
-
-  async function shutdownServer() {
-    for (const client of eventClients) {
-      client.end();
-    }
-    eventClients.clear();
-    setPageConnected(false);
-
-    if (!server) return;
-    const serverToClose = server;
-    server = undefined;
-    baseUrl = undefined;
-    await new Promise<void>((resolve) => serverToClose.close(() => resolve()));
-  }
-
-  pi.on("session_start", (_event, ctx) => {
-    setLastCtx(ctx);
-  });
-
-  pi.on("session_shutdown", async () => {
-    await shutdownServer();
-    lastCtx = undefined;
-  });
-
-  pi.registerShortcut("alt+c", {
-    description: "Open tldraw canvas and add submitted screenshots to the prompt",
-    handler: async (ctx) => {
-      await openCanvas(ctx);
-    },
-  });
-}
-
 async function readRequestBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let total = 0;
@@ -518,4 +306,216 @@ function renderDrawPage(token: string): string {
 	</script>
 </body>
 </html>`;
+}
+
+export default function (pi: ExtensionAPI) {
+  let server: Server | undefined;
+  let baseUrl: string | undefined;
+  let token = randomUUID();
+  let lastCtx: ExtensionContext | undefined;
+  let pageConnected = false;
+  const eventClients = new Set<ServerResponse>();
+
+  function setLastCtx(ctx: ExtensionContext) {
+    lastCtx = ctx;
+  }
+
+  function setPageConnected(connected: boolean) {
+    pageConnected = connected;
+    if (lastCtx?.hasUI) {
+      lastCtx.ui.setStatus("draw", connected ? "draw: open" : undefined);
+    }
+  }
+
+  function insertScreenshotIntoPrompt(path: string): boolean {
+    const ctx = lastCtx;
+    if (!ctx?.hasUI) return false;
+
+    const ref = `@${path}`;
+    const current = ctx.ui.getEditorText();
+    const separator = current.length === 0 || /\s$/.test(current) ? "" : " ";
+    ctx.ui.setEditorText(`${current}${separator}${ref}`);
+    ctx.ui.notify(`Added drawing to prompt: ${path}`, "info");
+    return true;
+  }
+
+  async function handleSubmit(req: IncomingMessage): Promise<SubmitResult> {
+    const body = await readRequestBody(req, MAX_UPLOAD_BYTES);
+    if (body.length === 0) {
+      throw httpError(400, "Empty screenshot upload.");
+    }
+    if (!isPng(body)) {
+      throw httpError(415, "Expected a PNG screenshot.");
+    }
+
+    const fileName = `pi-draw-${new Date().toISOString().replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}.png`;
+    const filePath = join(TMP_DIR, fileName);
+    await writeFile(filePath, body, { mode: 0o600 });
+
+    const inserted = insertScreenshotIntoPrompt(filePath);
+    return { path: filePath, inserted };
+  }
+
+  async function handleRequest(req: IncomingMessage, res: ServerResponse) {
+    const url = new URL(req.url ?? "/", `http://${HOST}`);
+
+    if (req.method === "GET" && url.pathname === "/favicon.ico") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/draw")) {
+      if (url.searchParams.get("token") !== token) {
+        writeText(res, 403, "Forbidden");
+        return;
+      }
+      writeHtml(res, renderDrawPage(token));
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname === "/events") {
+      if (url.searchParams.get("token") !== token) {
+        writeText(res, 403, "Forbidden");
+        return;
+      }
+      handleEvents(req, res);
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/closed") {
+      if (url.searchParams.get("token") !== token) {
+        writeJson(res, 403, { ok: false, error: "Forbidden" });
+        return;
+      }
+      for (const client of eventClients) {
+        client.end();
+      }
+      eventClients.clear();
+      setPageConnected(false);
+      writeJson(res, 200, { ok: true });
+      return;
+    }
+
+    if (req.method === "POST" && url.pathname === "/submit") {
+      if (url.searchParams.get("token") !== token) {
+        writeJson(res, 403, { ok: false, error: "Forbidden" });
+        return;
+      }
+
+      try {
+        const result = await handleSubmit(req);
+        writeJson(res, 200, { ok: true, ...result });
+      } catch (error) {
+        const statusCode = getHttpStatus(error);
+        writeJson(res, statusCode, {
+          ok: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return;
+    }
+
+    writeText(res, 404, "Not found");
+  }
+
+  function handleEvents(req: IncomingMessage, res: ServerResponse) {
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    res.write("event: ready\ndata: {}\n\n");
+    eventClients.add(res);
+    setPageConnected(true);
+
+    const ping = setInterval(() => {
+      if (!res.destroyed) res.write(": ping\n\n");
+    }, 15_000);
+
+    req.on("close", () => {
+      clearInterval(ping);
+      eventClients.delete(res);
+      setPageConnected(eventClients.size > 0);
+    });
+  }
+
+  async function ensureServer(): Promise<string> {
+    if (server && baseUrl) return baseUrl;
+
+    token = randomUUID();
+    server = createServer((req, res) => {
+      void handleRequest(req, res).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!res.headersSent) {
+          writeJson(res, 500, { ok: false, error: message });
+        } else {
+          res.end();
+        }
+      });
+    });
+
+    await new Promise<void>((resolve, reject) => {
+      server!.once("error", reject);
+      server!.listen(0, HOST, () => resolve());
+    });
+
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      throw new Error("Could not determine draw server port.");
+    }
+
+    baseUrl = `http://${HOST}:${address.port}`;
+    return baseUrl;
+  }
+
+  async function openCanvas(ctx: ExtensionContext) {
+    setLastCtx(ctx);
+    const urlBase = await ensureServer();
+    const url = `${urlBase}/draw?token=${encodeURIComponent(token)}`;
+
+    try {
+      await openBrowser(url);
+      const message = pageConnected
+        ? "Drawing canvas reopened. Click Submit to add a screenshot to the prompt."
+        : "Drawing canvas opened. Click Submit to add a screenshot to the prompt.";
+      ctx.ui.notify(message, "info");
+    } catch (error) {
+      ctx.ui.notify(
+        `Could not open browser: ${error instanceof Error ? error.message : String(error)}. Open ${url} manually.`,
+        "error",
+      );
+    }
+  }
+
+  async function shutdownServer() {
+    for (const client of eventClients) {
+      client.end();
+    }
+    eventClients.clear();
+    setPageConnected(false);
+
+    if (!server) return;
+    const serverToClose = server;
+    server = undefined;
+    baseUrl = undefined;
+    await new Promise<void>((resolve) => serverToClose.close(() => resolve()));
+  }
+
+  pi.on("session_start", (_event, ctx) => {
+    setLastCtx(ctx);
+  });
+
+  pi.on("session_shutdown", async () => {
+    await shutdownServer();
+    lastCtx = undefined;
+  });
+
+  pi.registerShortcut("alt+c", {
+    description: "Open tldraw canvas and add submitted screenshots to the prompt",
+    handler: async (ctx) => {
+      await openCanvas(ctx);
+    },
+  });
 }

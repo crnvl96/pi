@@ -3,6 +3,32 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 const EDITOR_RE = /^\s*(vi|vim|nvim)(?=$|\s)([\s\S]*)$/;
 
+function runNvim(ctx: ExtensionContext, cwd: string, nvimCommand: string): Promise<number | null> {
+  return ctx.ui.custom<number | null>((tui, _theme, _keybindings, done) => {
+    tui.stop();
+    process.stdout.write("\x1b[2J\x1b[H");
+
+    const shell = process.env.SHELL || "/bin/sh";
+    const result = spawnSync(shell, ["-c", nvimCommand], {
+      cwd,
+      stdio: "inherit",
+      env: process.env,
+    });
+
+    tui.start();
+    tui.requestRender(true);
+    done(result.status ?? 1);
+
+    return { render: () => [], invalidate: () => {} };
+  });
+}
+
+function toNvimCommand(command: string): string | undefined {
+  const match = EDITOR_RE.exec(command);
+  if (!match) return undefined;
+  return `nvim${match[2] ?? ""}`;
+}
+
 export default function viExtension(pi: ExtensionAPI) {
   pi.on("user_bash", async (event, ctx) => {
     const nvimCommand = toNvimCommand(event.command);
@@ -41,30 +67,4 @@ export default function viExtension(pi: ExtensionAPI) {
       await runNvim(ctx, ctx.cwd, "nvim");
     },
   });
-}
-
-function runNvim(ctx: ExtensionContext, cwd: string, nvimCommand: string): Promise<number | null> {
-  return ctx.ui.custom<number | null>((tui, _theme, _keybindings, done) => {
-    tui.stop();
-    process.stdout.write("\x1b[2J\x1b[H");
-
-    const shell = process.env.SHELL || "/bin/sh";
-    const result = spawnSync(shell, ["-c", nvimCommand], {
-      cwd,
-      stdio: "inherit",
-      env: process.env,
-    });
-
-    tui.start();
-    tui.requestRender(true);
-    done(result.status ?? 1);
-
-    return { render: () => [], invalidate: () => {} };
-  });
-}
-
-function toNvimCommand(command: string): string | undefined {
-  const match = EDITOR_RE.exec(command);
-  if (!match) return undefined;
-  return `nvim${match[2] ?? ""}`;
 }

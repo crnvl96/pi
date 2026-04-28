@@ -1,27 +1,28 @@
 import { isToolCallEventType, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
+const DANGEROUS_BASH_PATTERNS = [
+  /\brm\b/i,
+  /\bsudo\b/i,
+  /\bprune\b/i,
+  /\bchmod\b/i,
+  /\bdelete\b/i,
+  /\bdeletion\b/i,
+  /\bforce\b/i,
+  /\breset\b/i,
+  /\bterminate\b/i,
+  /\bclean\b/i,
+  /\bgit\s+branch\s+-D\b/i,
+  /\bgit\s+checkout\b/i,
+  /\bgit\s+restore\b/i,
+  /\bgit\s+push\b/i,
+];
+
 export default function permissionGateExtension(pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
     if (!isToolCallEventType("bash", event)) return;
 
     const command = String(event.input.command ?? "");
-
-    const match = [
-      /\brm\b/i,
-      /\bsudo\b/i,
-      /\bprune\b/i,
-      /\bchmod\b/i,
-      /\bdelete\b/i,
-      /\bdeletion\b/i,
-      /\bforce\b/i,
-      /\breset\b/i,
-      /\bterminate\b/i,
-      /\bclean\b/i,
-      /\bgit\s+branch\s+-D\b/i,
-      /\bgit\s+checkout\b/i,
-      /\bgit\s+restore\b/i,
-      /\bgit\s+push\b/i,
-    ].find((pattern) => pattern.test(command));
+    const match = DANGEROUS_BASH_PATTERNS.find((pattern) => pattern.test(command));
 
     if (!match) return;
 
