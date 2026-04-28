@@ -1,5 +1,18 @@
-import { getMarkdownTheme, type ExtensionAPI, type ExtensionCommandContext, type Theme } from "@mariozechner/pi-coding-agent";
-import { Key, Markdown, matchesKey, truncateToWidth, visibleWidth, type Component, type TUI } from "@mariozechner/pi-tui";
+import {
+  getMarkdownTheme,
+  type ExtensionAPI,
+  type ExtensionCommandContext,
+  type Theme,
+} from "@mariozechner/pi-coding-agent";
+import {
+  Key,
+  Markdown,
+  matchesKey,
+  truncateToWidth,
+  visibleWidth,
+  type Component,
+  type TUI,
+} from "@mariozechner/pi-tui";
 
 const CHROME_LINES = 4;
 const TAB_REPLACEMENT = "    ";
@@ -108,7 +121,6 @@ class LastResponseOverlay implements Component {
     this.cachedMarkdownLines = this.markdown.render(width).map((line) => fit(line, width));
     return this.cachedMarkdownLines;
   }
-
 }
 
 function findLastAssistantResponse(ctx: ExtensionCommandContext): string | undefined {
@@ -128,8 +140,9 @@ function extractText(content: unknown): string {
   if (!Array.isArray(content)) return "";
 
   return content
-    .filter((block): block is { type: string; text: string } =>
-      block?.type === "text" && typeof block.text === "string",
+    .filter(
+      (block): block is { type: string; text: string } =>
+        block?.type === "text" && typeof block.text === "string",
     )
     .map((block) => block.text)
     .join("\n\n");
@@ -145,7 +158,8 @@ function fit(text: string, width: number): string {
 
 export default function renderLastAgentResponseExtension(pi: ExtensionAPI) {
   pi.registerCommand("ext:render-last-agent-response", {
-    description: "Render the last assistant response as markdown in a full-screen scrollable overlay",
+    description:
+      "Render the last assistant response as markdown in a full-screen scrollable overlay",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const response = findLastAssistantResponse(ctx);
       if (!response) {

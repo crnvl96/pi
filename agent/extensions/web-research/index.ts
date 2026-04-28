@@ -8,7 +8,10 @@ import { join } from "node:path";
 
 import Perplexity from "@perplexity-ai/perplexity_ai";
 import type { ResponseCreateResponse } from "@perplexity-ai/perplexity_ai/resources/responses";
-import type { SearchCreateParams, SearchCreateResponse } from "@perplexity-ai/perplexity_ai/resources/search";
+import type {
+  SearchCreateParams,
+  SearchCreateResponse,
+} from "@perplexity-ai/perplexity_ai/resources/search";
 import {
   DEFAULT_MAX_BYTES,
   DEFAULT_MAX_LINES,
@@ -181,7 +184,10 @@ function formatContextTruncationNotice(truncation: TruncationResult) {
   )} of ${formatSize(truncation.totalBytes)}). ${formatOmitted(truncation)}.]`;
 }
 
-function buildBoundary(prefix: "SEARCH_RESULT" | "FETCH_RESULT", index: number): WebContentBoundary {
+function buildBoundary(
+  prefix: "SEARCH_RESULT" | "FETCH_RESULT",
+  index: number,
+): WebContentBoundary {
   const suffix = `${prefix}_${index + 1}`;
 
   return {
@@ -382,7 +388,9 @@ function normalizeSearchDomains(domains: string[]) {
     let domain: string;
     try {
       if (raw.includes("://") || raw.startsWith("//") || raw.includes("/")) {
-        const parsed = new URL(raw.includes("://") || raw.startsWith("//") ? raw : `https://${raw}`);
+        const parsed = new URL(
+          raw.includes("://") || raw.startsWith("//") ? raw : `https://${raw}`,
+        );
 
         if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
           throw new Error("invalid protocol");
@@ -450,7 +458,14 @@ function renderFetchedContent(
   return {
     text: renderContentBlock(boundary, snippet, "(No content returned.)", details.truncation),
     details,
-    metadata: buildMetadata(index, title, content.url, "fetched_page", boundary, details.truncation),
+    metadata: buildMetadata(
+      index,
+      title,
+      content.url,
+      "fetched_page",
+      boundary,
+      details.truncation,
+    ),
   };
 }
 
@@ -499,7 +514,11 @@ function formatFetchToolContext(
   contents: WebFetchContent[],
 ): FormattedFetchToolContext {
   const generatedAt = new Date().toISOString();
-  const rawContext = buildFetchToolContext(urls, renderFetchedContents(contents, false), generatedAt);
+  const rawContext = buildFetchToolContext(
+    urls,
+    renderFetchedContents(contents, false),
+    generatedAt,
+  );
   const boundedContents = renderFetchedContents(contents, true);
   const boundedContext = buildFetchToolContext(urls, boundedContents, generatedAt);
 

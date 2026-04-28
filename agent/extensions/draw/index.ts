@@ -19,10 +19,6 @@ const DRAW_ASSETS = {
     contentType: "text/javascript; charset=utf-8",
   },
   "/assets/draw.css": {
-    path: join(DRAW_DIST_DIR, "draw.css"),
-    contentType: "text/css; charset=utf-8",
-  },
-  "/assets/draw.css": {
     path: join(EXTENSION_DIR, "src", "draw.css"),
     contentType: "text/css; charset=utf-8",
   },
@@ -354,7 +350,9 @@ export default function (pi: ExtensionAPI) {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       ctx.ui.notify(
-        url ? `Could not open browser: ${message}. Open ${url} manually.` : `Could not start draw canvas: ${message}`,
+        url
+          ? `Could not open browser: ${message}. Open ${url} manually.`
+          : `Could not start draw canvas: ${message}`,
         "error",
       );
     }

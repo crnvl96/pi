@@ -5,8 +5,10 @@
   "scripts": {
     "build": "npm run build:draw",
     "build:draw": "esbuild agent/extensions/draw/src/draw.ts --bundle --format=esm --platform=browser --target=es2022 --minify --legal-comments=none --outfile=agent/extensions/draw/dist/draw.js",
+    "lint": "oxlint .",
+    "format": "oxfmt .",
     "typecheck": "tsgo --noEmit --project tsconfig.json",
-    "lint": "oxlint --ignore-pattern 'agent/extensions/draw/dist/**' ."
+    "all": "npm run lint && npm run format && npm run typecheck"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "^0.70.5",

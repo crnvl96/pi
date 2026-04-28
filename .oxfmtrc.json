@@ -1,3 +1,19 @@
 {
-  "ignorePatterns": []
+  "ignorePatterns": [
+    "**/node_modules/**",
+    "**/dist/**",
+    "**/.cache/**",
+    "**/coverage/**",
+    "**/sessions/**",
+    "**/auth.json",
+    "**/*.log",
+    "**/*.tmp",
+    "**/*.temp",
+    "**/*.bak",
+    "**/*.tsbuildinfo",
+    "**/*.local",
+    "**/*.local.*",
+    "**/.vscode/**",
+    "**/.idea/**"
+  ]
 }

@@ -97,7 +97,10 @@ const events = new EventSource("/events?token=" + encodeURIComponent(TOKEN));
 function notifyClosed() {
   events.close();
   try {
-    navigator.sendBeacon("/closed?token=" + encodeURIComponent(TOKEN), new Blob([], { type: "text/plain" }));
+    navigator.sendBeacon(
+      "/closed?token=" + encodeURIComponent(TOKEN),
+      new Blob([], { type: "text/plain" }),
+    );
   } catch {
     // Best effort only.
   }

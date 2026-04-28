@@ -12,7 +12,11 @@ type ShellCommand = {
   command: string;
 };
 
-function runShellCommand(ctx: ExtensionContext, cwd: string, command: string): Promise<number | null> {
+function runShellCommand(
+  ctx: ExtensionContext,
+  cwd: string,
+  command: string,
+): Promise<number | null> {
   return ctx.ui.custom<number | null>((tui, _theme, _keybindings, done) => {
     tui.stop();
     process.stdout.write("\x1b[2J\x1b[H");
@@ -95,7 +99,11 @@ export default function shellExtension(pi: ExtensionAPI) {
         return;
       }
       const trimmedArgs = args.trim();
-      await runShellCommand(ctx, ctx.cwd, trimmedArgs ? `${VIM_COMMAND} ${trimmedArgs}` : VIM_COMMAND);
+      await runShellCommand(
+        ctx,
+        ctx.cwd,
+        trimmedArgs ? `${VIM_COMMAND} ${trimmedArgs}` : VIM_COMMAND,
+      );
     },
   });
 }
