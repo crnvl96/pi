@@ -17,7 +17,7 @@ const DANGEROUS_BASH_PATTERNS = [
   /\bgit\s+push\b/i,
 ];
 
-export default function permissionGateExtension(pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
     if (!isToolCallEventType("bash", event)) return;
 

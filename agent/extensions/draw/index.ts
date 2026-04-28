@@ -12,18 +12,18 @@ const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const DRAW_ASSET_CACHE_SECONDS = 31_536_000;
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
 const DRAW_DIST_DIR = join(EXTENSION_DIR, "dist");
-const DRAW_PAGE_TEMPLATE_PATH = join(EXTENSION_DIR, "src", "draw-page.html");
+const DRAW_PAGE_TEMPLATE_PATH = join(EXTENSION_DIR, "src", "draw.html");
 const DRAW_ASSETS = {
-  "/assets/draw-ui.js": {
-    path: join(DRAW_DIST_DIR, "draw-ui.js"),
+  "/assets/draw.js": {
+    path: join(DRAW_DIST_DIR, "draw.js"),
     contentType: "text/javascript; charset=utf-8",
   },
-  "/assets/draw-ui.css": {
-    path: join(DRAW_DIST_DIR, "draw-ui.css"),
+  "/assets/draw.css": {
+    path: join(DRAW_DIST_DIR, "draw.css"),
     contentType: "text/css; charset=utf-8",
   },
-  "/assets/draw-a-diagram.css": {
-    path: join(EXTENSION_DIR, "src", "draw-a-diagram.css"),
+  "/assets/draw.css": {
+    path: join(EXTENSION_DIR, "src", "draw.css"),
     contentType: "text/css; charset=utf-8",
   },
 } as const;
@@ -119,7 +119,7 @@ async function getDrawAssetVersion(): Promise<string> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Draw UI bundle is missing or unreadable. Run "npm run build:draw-a-diagram" to generate agent/extensions/draw-a-diagram/dist. ${message}`,
+      `Draw UI bundle is missing or unreadable. Run "npm run build:draw" to generate agent/extensions/draw/dist. ${message}`,
     );
   }
 }
@@ -170,7 +170,7 @@ async function renderDrawPage(token: string, assetVersion: string): Promise<stri
   return html;
 }
 
-export default function drawADiagramExtension(pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI) {
   let server: Server | undefined;
   let baseUrl: string | undefined;
   let token = randomUUID();
@@ -185,7 +185,7 @@ export default function drawADiagramExtension(pi: ExtensionAPI) {
   function setPageConnected(connected: boolean) {
     pageConnected = connected;
     if (lastCtx?.hasUI) {
-      lastCtx.ui.setStatus("draw-a-diagram", connected ? "draw-a-diagram: open" : undefined);
+      lastCtx.ui.setStatus("draw", connected ? "draw: open" : undefined);
     }
   }
 

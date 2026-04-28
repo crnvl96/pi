@@ -3,10 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "npm run build:draw-a-diagram",
-    "build:draw-a-diagram": "esbuild agent/extensions/draw-a-diagram/src/draw-ui.ts --bundle --format=esm --platform=browser --target=es2022 --minify --legal-comments=none --outfile=agent/extensions/draw-a-diagram/dist/draw-ui.js",
+    "build": "npm run build:draw",
+    "build:draw": "esbuild agent/extensions/draw/src/draw.ts --bundle --format=esm --platform=browser --target=es2022 --minify --legal-comments=none --outfile=agent/extensions/draw/dist/draw.js",
     "typecheck": "tsgo --noEmit --project tsconfig.json",
-    "lint": "oxlint --ignore-pattern 'agent/extensions/draw-a-diagram/dist/**' ."
+    "lint": "oxlint --ignore-pattern 'agent/extensions/draw/dist/**' ."
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "^0.70.5",
@@ -15,8 +15,8 @@
     "esbuild": "^0.28.0",
     "oxfmt": "^0.46.0",
     "oxlint": "^1.61.0",
-    "react": "19.2.1",
-    "react-dom": "19.2.1",
-    "tldraw": "4.5.10"
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
+    "tldraw": "^4.5.10"
   }
 }
