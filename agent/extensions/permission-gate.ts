@@ -1,11 +1,6 @@
 import { isToolCallEventType, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-type DangerousCommandRule = {
-  label: string;
-  pattern: RegExp;
-};
-
-const dangerousCommandRules: DangerousCommandRule[] = [
+const dangerousCommandRules = [
   { label: "rm", pattern: /\brm\b/i },
   { label: "sudo", pattern: /\bsudo\b/i },
   { label: "prune", pattern: /\bprune\b/i },
@@ -22,39 +17,28 @@ const dangerousCommandRules: DangerousCommandRule[] = [
   { label: "git push", pattern: /\bgit\s+push\b/i },
 ];
 
-function findDangerousCommandRule(command: string): DangerousCommandRule | undefined {
-  return dangerousCommandRules.find(({ pattern }) => pattern.test(command));
-}
-
 export default function permissionGateExtension(pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
-    if (!isToolCallEventType("bash", event)) {
-      return undefined;
-    }
+    if (!isToolCallEventType("bash", event)) return;
 
     const command = String(event.input.command ?? "");
-    const match = findDangerousCommandRule(command);
+    const match = dangerousCommandRules.find(({ pattern }) => pattern.test(command));
 
-    if (!match) {
-      return undefined;
-    }
+    if (!match) return;
 
-    if (!ctx.hasUI) {
+    if (!ctx.hasUI)
       return {
         block: true,
         reason: `Dangerous command blocked (no UI for confirmation): ${match.label}`,
       };
-    }
 
-    const allowed = await ctx.ui.confirm(
-      "Dangerous command",
-      `${command}\n\nDetected: ${match.label}\n\nAllow execution?`,
-    );
+    const header = "Dangerous command";
+    const msg = `${command}\n\nDetected: ${match.label}\n\nAllow execution?`;
 
-    if (!allowed) {
-      return { block: true, reason: `Blocked by user: ${match.label}` };
-    }
-
-    return undefined;
+    if (!(await ctx.ui.confirm(header, msg)))
+      return {
+        block: true,
+        reason: `Blocked by user: ${match.label}`,
+      };
   });
 }

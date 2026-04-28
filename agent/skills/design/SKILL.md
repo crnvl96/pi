@@ -1,6 +1,7 @@
 ---
-name: change-design
-description: Default skill for code-change planning. Use at the start of any task that may lead to code changes, including features, fixes, debugging, refactors, tests, migrations, behavior changes, design discussions, implementation plans, or investigations. Guides scope definition, codebase exploration, user interview, success criteria, verification planning, tradeoff analysis, and durable project-memory updates.
+name: design
+description: Default skill for code-change planning. Use at the start of any task that may lead to code changes.
+disable-model-invocation: true
 ---
 
 Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
@@ -9,7 +10,7 @@ Ask the questions one at a time, waiting for feedback on each question before co
 
 If a question can be answered by exploring the codebase, explore the codebase instead.
 
-Main branches:
+Most important questions to clarify:
 
 1. **Goal** - what problem are we solving?
 2. **Scope** - what will change and what will not change?
@@ -22,16 +23,19 @@ During codebase exploration, also look for existing documentation:
 
 ### File structure
 
-A single context at the root of repository:
+A single context at the root of repository and a `docs/` folder containing `adr/` and other documentation artifacts:
 
 ```
 /
 |-- CONTEXT.md
 |-- docs/
-|   `-- adr/
-|       |-- 0001-event-sourced-orders.md
-|       `-- 0002-postgres-for-write-model.md
-`-- src/
+    `-- adr/
+    |   |-- 0001-event-sourced-orders.md
+    |   `-- 0002-postgres-for-write-model.md
+    |
+    |-- architecture.md
+    |-- ...
+    ...
 ```
 
 Create files lazily - only when you have something to write. If no `CONTEXT.md` exists, create one when the first term is resolved. If no `docs/adr/` exists, create it when the first ADR is needed.
@@ -68,4 +72,5 @@ Only offer to create an ADR when all three are true:
 2. **Surprising without context** - a future reader will wonder "why did they do it this way?"
 3. **The result of a real trade-off** - there were genuine alternatives and you picked one for specific reasons
 
-If any of the three is missing, skip the ADR. Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
+If a decision is easy to reverse, skip it - you'll just reverse it. If it's not surprising, nobody will wonder why. If there was no real alternative, there's nothing to record beyond "we did the obvious thing."
+Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
