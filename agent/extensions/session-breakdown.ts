@@ -17,15 +17,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { BorderedLoader } from "@mariozechner/pi-coding-agent";
-import {
-	Key,
-	matchesKey,
-	sliceByColumn,
-	type Component,
-	type TUI,
-	truncateToWidth,
-	visibleWidth,
-} from "@mariozechner/pi-tui";
+import { Key, matchesKey, type Component, type TUI, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs/promises";
@@ -39,6 +31,19 @@ type TodKey = string; // "after-midnight", "morning", "afternoon", "evening", "n
 type BreakdownView = "model" | "cwd" | "dow" | "tod";
 
 const DOW_NAMES: DowKey[] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DOW_LABELS = new Map<DowKey, string>([
+	["Mon", "Monday"],
+	["Tue", "Tuesday"],
+	["Wed", "Wednesday"],
+	["Thu", "Thursday"],
+	["Fri", "Friday"],
+	["Sat", "Saturday"],
+	["Sun", "Sunday"],
+]);
+
+function dowLabel(key: DowKey): string {
+	return DOW_LABELS.get(key) ?? key;
+}
 
 const TOD_BUCKETS: { key: TodKey; label: string; from: number; to: number }[] = [
 	{ key: "after-midnight", label: "After midnight (0–5)", from: 0, to: 5 },
@@ -217,10 +222,6 @@ function weightedMix(colors: Array<{ color: RGB; weight: number }>): RGB {
 	}
 	if (total <= 0) return EMPTY_CELL_BG;
 	return { r: Math.round(r / total), g: Math.round(g / total), b: Math.round(b / total) };
-}
-
-function ansiBg(rgb: RGB, text: string): string {
-	return `\x1b[48;2;${rgb.r};${rgb.g};${rgb.b}m${text}\x1b[0m`;
 }
 
 function ansiFg(rgb: RGB, text: string): string {
@@ -966,51 +967,6 @@ function displayModelName(modelKey: string): string {
 	return idx === -1 ? modelKey : modelKey.slice(idx + 1);
 }
 
-function renderLegendItems(modelColors: Map<ModelKey, RGB>, orderedModels: ModelKey[], otherColor: RGB): string[] {
-	const items: string[] = [];
-	for (const mk of orderedModels) {
-		const c = modelColors.get(mk);
-		if (!c) continue;
-		items.push(`${ansiFg(c, "█")} ${displayModelName(mk)}`);
-	}
-	items.push(`${ansiFg(otherColor, "█")} other`);
-	return items;
-}
-
-function fitRight(text: string, width: number): string {
-	if (width <= 0) return "";
-	let w = visibleWidth(text);
-	let t = text;
-	if (w > width) {
-		t = sliceByColumn(t, w - width, width, true);
-		w = visibleWidth(t);
-	}
-	return " ".repeat(Math.max(0, width - w)) + t;
-}
-
-function renderLegendBlock(leftLabel: string, items: string[], width: number): string[] {
-	if (width <= 0) return [];
-	if (items.length === 0) return [truncateToWidth(leftLabel, width)];
-
-	const lines: string[] = [];
-	// First line: label on left, first item right-aligned into remaining space.
-	const leftW = visibleWidth(leftLabel);
-	if (leftW >= width) {
-		lines.push(truncateToWidth(leftLabel, width));
-		// Put all items on their own lines right-aligned.
-		for (const it of items) lines.push(fitRight(it, width));
-		return lines;
-	}
-
-	const remaining = Math.max(0, width - leftW);
-	lines.push(leftLabel + fitRight(items[0], remaining));
-
-	for (let i = 1; i < items.length; i++) {
-		lines.push(fitRight(items[i], width));
-	}
-	return lines;
-}
-
 function renderModelTable(range: RangeAgg, mode: MeasurementMode, maxRows = 8): string[] {
 	// Keep this relatively narrow: model + selected metric + cost + share.
 	const metric = graphMetricForRange(range, mode);
@@ -1127,7 +1083,7 @@ function renderDowDistributionLines(
 	width: number,
 ): string[] {
 	const { kind, perDow, total } = dowMetricForRange(range, mode);
-	const dayWidth = 3;
+	const dayWidth = 9;
 	const pctWidth = 4; // "100%"
 	const valueWidth = kind === "tokens" ? 10 : 8;
 	const showValue = width >= dayWidth + 1 + 10 + 1 + pctWidth + 1 + valueWidth;
@@ -1149,7 +1105,7 @@ function renderDowDistributionLines(
 		const emptyBar = empty > 0 ? ansiFg(EMPTY_CELL_BG, "█".repeat(empty)) : "";
 		const pct = padLeft(`${Math.round(share * 100)}%`, pctWidth);
 
-		let line = `${padRight(dow, dayWidth)} ${filledBar}${emptyBar} ${pct}`;
+		let line = `${padRight(dowLabel(dow), dayWidth)} ${filledBar}${emptyBar} ${pct}`;
 		if (showValue) line += ` ${padLeft(formatCount(value), valueWidth)}`;
 		lines.push(line);
 	}
@@ -1160,10 +1116,10 @@ function renderDowDistributionLines(
 function renderDowTable(range: RangeAgg, mode: MeasurementMode): string[] {
 	const { kind, perDow, total } = dowMetricForRange(range, mode);
 	const valueWidth = kind === "tokens" ? 10 : 8;
-	const dowWidth = 5; // "day  "
+	const dowWidth = Math.max("day of week".length, ...DOW_NAMES.map((dow) => dowLabel(dow).length));
 
 	const lines: string[] = [];
-	lines.push(`${padRight("day", dowWidth)}  ${padLeft(kind, valueWidth)}  ${padLeft("cost", 10)}  ${padLeft("share", 6)}`);
+	lines.push(`${padRight("day of week", dowWidth)}  ${padLeft(kind, valueWidth)}  ${padLeft("cost", 10)}  ${padLeft("share", 6)}`);
 	lines.push(`${"-".repeat(dowWidth)}  ${"-".repeat(valueWidth)}  ${"-".repeat(10)}  ${"-".repeat(6)}`);
 
 	// Always show in Mon–Sun order
@@ -1172,7 +1128,7 @@ function renderDowTable(range: RangeAgg, mode: MeasurementMode): string[] {
 		const cost = range.dowCost.get(dow) ?? 0;
 		const share = total > 0 ? `${Math.round((value / total) * 100)}%` : "0%";
 		lines.push(
-			`${padRight(dow, dowWidth)}  ${padLeft(formatCount(value), valueWidth)}  ${padLeft(formatUsd(cost), 10)}  ${padLeft(share, 6)}`,
+			`${padRight(dowLabel(dow), dowWidth)}  ${padLeft(formatCount(value), valueWidth)}  ${padLeft(formatUsd(cost), 10)}  ${padLeft(share, 6)}`,
 		);
 	}
 
@@ -1215,22 +1171,6 @@ function renderTodTable(range: RangeAgg, mode: MeasurementMode): string[] {
 	}
 
 	return lines;
-}
-
-function renderLeftRight(left: string, right: string, width: number): string {
-	const leftW = visibleWidth(left);
-	if (width <= 0) return "";
-	if (leftW >= width) return truncateToWidth(left, width);
-
-	const remaining = width - leftW;
-	let rightText = right;
-	const rightW = visibleWidth(rightText);
-	if (rightW > remaining) {
-		// Keep the *rightmost* part visible.
-		rightText = sliceByColumn(rightText, rightW - remaining, remaining, true);
-	}
-	const pad = Math.max(0, remaining - visibleWidth(rightText));
-	return left + " ".repeat(pad) + rightText;
 }
 
 function rangeSummary(range: RangeAgg, days: number, mode: MeasurementMode): string {
@@ -1304,8 +1244,8 @@ class BreakdownComponent implements Component {
 	private tui: TUI;
 	private onDone: () => void;
 	private rangeIndex = 1; // default 30d
-	private measurement: MeasurementMode = "sessions";
-	private view: BreakdownView = "model";
+	private measurement: MeasurementMode = "tokens";
+	private view: BreakdownView = "dow";
 	private cachedWidth?: number;
 	private cachedLines?: string[];
 
@@ -1386,7 +1326,7 @@ class BreakdownComponent implements Component {
 
 		const tab = (days: number, idx: number): string => {
 			const selected = idx === this.rangeIndex;
-			const label = `${days}d`;
+			const label = `${days} days`;
 			return selected ? bold(`[${label}]`) : dim(` ${label} `);
 		};
 
@@ -1402,8 +1342,8 @@ class BreakdownComponent implements Component {
 
 		const header =
 			`${bold("Session breakdown")}  ${tab(7, 0)}${tab(30, 1)}${tab(90, 2)}  ` +
-			`${metricTab("sessions", "sess")}${metricTab("messages", "msg")}${metricTab("tokens", "tok")}  ` +
-			`${viewTab("model", "model")}${viewTab("cwd", "cwd")}${viewTab("dow", "dow")}${viewTab("tod", "tod")}`;
+			`${metricTab("sessions", "sessions")}${metricTab("messages", "messages")}${metricTab("tokens", "tokens")}  ` +
+			`${viewTab("model", "models")}${viewTab("cwd", "directories")}${viewTab("dow", "days of the week")}${viewTab("tod", "time of day")}`;
 
 		// Choose colors and legend based on current view
 		let activeColorMap: Map<string, RGB>;
@@ -1430,7 +1370,7 @@ class BreakdownComponent implements Component {
 			activeColorMap = this.data.dowPalette.dowColors;
 			for (const dow of this.data.dowPalette.orderedDows) {
 				const c = activeColorMap.get(dow);
-				if (c) legendItems.push(`${ansiFg(c, "█")} ${dow}`);
+				if (c) legendItems.push(`${ansiFg(c, "█")} ${dowLabel(dow)}`);
 			}
 		} else {
 			activeColorMap = this.data.todPalette.todColors;
@@ -1440,7 +1380,7 @@ class BreakdownComponent implements Component {
 			}
 		}
 
-		const graphDescriptor = this.view === "dow" ? `share of ${metric.kind} by weekday` : `${metric.kind}/day`;
+		const graphDescriptor = this.view === "dow" ? `share of ${metric.kind} by day of week` : `${metric.kind} per day`;
 		const summary = rangeSummary(range, selectedDays, metric.kind) + dim(`   (graph: ${graphDescriptor})`);
 
 		let graphLines: string[];
@@ -1473,7 +1413,7 @@ class BreakdownComponent implements Component {
 
 		const lines: string[] = [];
 		lines.push(truncateToWidth(header, width));
-		lines.push(truncateToWidth(dim("←/→ range · ↑/↓ view · tab metric · q to close"), width));
+		lines.push(truncateToWidth(dim("left/right range | up/down view | tab metric | q close"), width));
 		lines.push("");
 		lines.push(truncateToWidth(summary, width));
 		lines.push("");
@@ -1490,9 +1430,9 @@ class BreakdownComponent implements Component {
 			if (showSideLegend) {
 				const legendBlock: string[] = [];
 				const legendTitle =
-					this.view === "model" ? "Top models (30d palette):"
-					: this.view === "cwd" ? "Top directories (30d palette):"
-					: "Time of day:";
+					this.view === "model" ? "Top models by recent usage:"
+					: this.view === "cwd" ? "Top directories by recent usage:"
+					: "Time-of-day buckets:";
 				legendBlock.push(dim(legendTitle));
 				legendBlock.push(...legendItems);
 				// Fit into 7 rows (same as graph). If too many, show a final "+N more" line.
@@ -1520,9 +1460,9 @@ class BreakdownComponent implements Component {
 				lines.push("");
 				// Compact legend below, left-aligned.
 				const legendTitleBelow =
-					this.view === "model" ? "Top models (30d palette):"
-					: this.view === "cwd" ? "Top directories (30d palette):"
-					: "Time of day:";
+					this.view === "model" ? "Top models by recent usage:"
+					: this.view === "cwd" ? "Top directories by recent usage:"
+					: "Time-of-day buckets:";
 				lines.push(truncateToWidth(dim(legendTitleBelow), width));
 				for (const it of legendItems) lines.push(truncateToWidth(it, width));
 			}
@@ -1540,7 +1480,7 @@ class BreakdownComponent implements Component {
 
 export default function sessionBreakdownExtension(pi: ExtensionAPI) {
 	pi.registerCommand("session-breakdown", {
-		description: "Interactive breakdown of last 7/30/90 days of ~/.pi session usage (sessions/messages/tokens + cost by model)",
+		description: "Interactive breakdown of last 7/30/90 days of ~/.pi session usage by model, directory, day of week, and time of day",
 		handler: async (_args, ctx: ExtensionContext) => {
 			if (!ctx.hasUI) {
 				// Non-interactive fallback: just notify.
@@ -1549,7 +1489,7 @@ export default function sessionBreakdownExtension(pi: ExtensionAPI) {
 				pi.sendMessage(
 					{
 						customType: "session-breakdown",
-						content: `Session breakdown (non-interactive)\n${rangeSummary(range, 30, "sessions")}`,
+						content: `Session breakdown (non-interactive)\n${rangeSummary(range, 30, "tokens")}`,
 						display: true,
 					},
 					{ triggerTurn: false },

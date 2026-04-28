@@ -291,7 +291,7 @@ class ContextView implements Component {
 		this.container.addChild(new DynamicBorder((s) => theme.fg("accent", s)));
 		this.container.addChild(
 			new Text(
-				theme.fg("accent", theme.bold("Context")) + theme.fg("dim", "  (Esc/q/Enter to close)"),
+				theme.fg("accent", theme.bold("Context overview")) + theme.fg("dim", "  (Esc/q/Enter to close)"),
 				1,
 				0,
 			),
@@ -314,11 +314,11 @@ class ContextView implements Component {
 
 		// Window + bar
 		if (!this.data.usage) {
-			lines.push(muted("Window: ") + dim("(unknown)"));
+			lines.push(muted("Context window: ") + dim("(unknown)"));
 		} else {
 			const u = this.data.usage;
 			lines.push(
-				muted("Window: ") +
+				muted("Context window: ") +
 					text(`~${u.effectiveTokens.toLocaleString()} / ${u.contextWindow.toLocaleString()}`) +
 					muted(`  (${u.percent.toFixed(1)}% used, ~${u.remainingTokens.toLocaleString()} left)`),
 			);
@@ -342,16 +342,16 @@ class ContextView implements Component {
 					barWidth,
 				) +
 				" " +
-				dim("sys") +
+				dim("system prompt") +
 				this.theme.fg("accent", "█") +
 				" " +
 				dim("tools") +
 				this.theme.fg("warning", "█") +
 				" " +
-				dim("convo") +
+				dim("conversation") +
 				this.theme.fg("success", "█") +
 				" " +
-				dim("free") +
+				dim("remaining") +
 				this.theme.fg("dim", "█");
 			lines.push(bar);
 		}
@@ -362,20 +362,20 @@ class ContextView implements Component {
 		if (this.data.usage) {
 			const u = this.data.usage;
 			lines.push(
-				muted("System: ") +
-					text(`~${u.systemPromptTokens.toLocaleString()} tok`) +
-					muted(` (AGENTS ~${u.agentTokens.toLocaleString()})`),
+				muted("System prompt tokens: ") +
+					text(`~${u.systemPromptTokens.toLocaleString()} tokens`) +
+					muted(` (project instructions ~${u.agentTokens.toLocaleString()} tokens)`),
 			);
 			lines.push(
-				muted("Tools: ") +
-					text(`~${u.toolsTokens.toLocaleString()} tok`) +
-					muted(` (${u.activeTools} active)`),
+				muted("Active tool definitions: ") +
+					text(`~${u.toolsTokens.toLocaleString()} tokens`) +
+					muted(` (${u.activeTools} tools active)`),
 			);
 		}
 
-		lines.push(muted(`AGENTS (${this.data.agentFiles.length}): `) + text(this.data.agentFiles.length ? joinComma(this.data.agentFiles) : "(none)"));
+		lines.push(muted(`Project instructions (${this.data.agentFiles.length}): `) + text(this.data.agentFiles.length ? joinComma(this.data.agentFiles) : "(none)"));
 		lines.push("");
-		lines.push(muted(`Extensions (${this.data.extensions.length}): `) + text(this.data.extensions.length ? joinComma(this.data.extensions) : "(none)"));
+		lines.push(muted(`Loaded extensions (${this.data.extensions.length}): `) + text(this.data.extensions.length ? joinComma(this.data.extensions) : "(none)"));
 
 		const loaded = new Set(this.data.loadedSkills);
 		const skillsRendered = this.data.skills.length
@@ -385,10 +385,10 @@ class ContextView implements Component {
 					this.theme.fg("muted", ", "),
 				)
 			: "(none)";
-		lines.push(muted(`Skills (${this.data.skills.length}): `) + skillsRendered);
+		lines.push(muted(`Available skills (${this.data.skills.length}): `) + skillsRendered);
 		lines.push("");
 		lines.push(
-			muted("Session: ") +
+			muted("Session totals: ") +
 				text(`${this.data.session.totalTokens.toLocaleString()} tokens`) +
 				muted(" · ") +
 				text(formatUsd(this.data.session.totalCost)),
@@ -471,7 +471,7 @@ export default function contextExtension(pi: ExtensionAPI) {
 	});
 
 	pi.registerCommand("context", {
-		description: "Show loaded context overview",
+		description: "Show context window usage, loaded instructions, extensions, skills, and session totals",
 		handler: async (_args, ctx: ExtensionCommandContext) => {
 			const commands = pi.getCommands();
 			const extensionCmds = commands.filter((c) => c.source === "extension");
@@ -525,20 +525,20 @@ export default function contextExtension(pi: ExtensionAPI) {
 
 			const makePlainText = () => {
 				const lines: string[] = [];
-				lines.push("Context");
+				lines.push("Context overview");
 				if (usage) {
 					lines.push(
-						`Window: ~${effectiveTokens.toLocaleString()} / ${ctxWindow.toLocaleString()} (${percent.toFixed(1)}% used, ~${remainingTokens.toLocaleString()} left)`,
+						`Context window: ~${effectiveTokens.toLocaleString()} / ${ctxWindow.toLocaleString()} (${percent.toFixed(1)}% used, ~${remainingTokens.toLocaleString()} left)`,
 					);
 				} else {
-					lines.push("Window: (unknown)");
+					lines.push("Context window: (unknown)");
 				}
-				lines.push(`System: ~${systemPromptTokens.toLocaleString()} tok (AGENTS ~${agentTokens.toLocaleString()})`);
-				lines.push(`Tools: ~${toolsTokens.toLocaleString()} tok (${activeToolNames.length} active)`);
-				lines.push(`AGENTS: ${agentFilePaths.length ? joinComma(agentFilePaths) : "(none)"}`);
-				lines.push(`Extensions (${extensionFiles.length}): ${extensionFiles.length ? joinComma(extensionFiles) : "(none)"}`);
-				lines.push(`Skills (${skills.length}): ${skills.length ? joinComma(skills) : "(none)"}`);
-				lines.push(`Session: ${sessionUsage.totalTokens.toLocaleString()} tokens · ${formatUsd(sessionUsage.totalCost)}`);
+				lines.push(`System prompt tokens: ~${systemPromptTokens.toLocaleString()} tokens (project instructions ~${agentTokens.toLocaleString()} tokens)`);
+				lines.push(`Active tool definitions: ~${toolsTokens.toLocaleString()} tokens (${activeToolNames.length} tools active)`);
+				lines.push(`Project instructions: ${agentFilePaths.length ? joinComma(agentFilePaths) : "(none)"}`);
+				lines.push(`Loaded extensions (${extensionFiles.length}): ${extensionFiles.length ? joinComma(extensionFiles) : "(none)"}`);
+				lines.push(`Available skills (${skills.length}): ${skills.length ? joinComma(skills) : "(none)"}`);
+				lines.push(`Session totals: ${sessionUsage.totalTokens.toLocaleString()} tokens | ${formatUsd(sessionUsage.totalCost)}`);
 				return lines.join("\n");
 			};
 

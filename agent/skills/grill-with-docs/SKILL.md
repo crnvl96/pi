@@ -14,6 +14,8 @@ If a question can be answered by exploring the codebase, explore the codebase in
 
 During codebase exploration, also look for existing documentation:
 
+Check for a `TODO.md` file at the repository root. If it exists, read it before the interview and use it as additional project context. Do not create it if it is missing.
+
 ### File structure
 
 Most repos have a single context:
