@@ -1,16 +1,12 @@
 # Local/private pi data
-agent/auth.json
-agent/sessions/
+auth.json
+sessions/
 
 # Dependencies
 node_modules/
 
 # Generated extension/vendor bundles
-agent/extensions/*-dist/
-agent/vendor/*/*-dist/
-agent/vendor/*/dist/
-vendor/*/*-dist/
-vendor/*/dist/
+dist/
 
 # Environment/secrets
 .env
@@ -19,11 +15,6 @@ vendor/*/dist/
 
 # Logs
 *.log
-agent/pi-debug.log
-agent/pi-crash.log
-npm-debug.log*
-yarn-debug.log*
-pnpm-debug.log*
 
 # OS files
 .DS_Store
@@ -33,8 +24,6 @@ Thumbs.db
 *.tmp
 *.temp
 *.bak
-*.swp
-*.swo
 
 # Caches/build/test output
 .cache/
@@ -42,6 +31,7 @@ coverage/
 *.tsbuildinfo
 
 # Local tool/editor config
-mise.local.toml
+*.local.*
+*.local
 .vscode/
 .idea/
