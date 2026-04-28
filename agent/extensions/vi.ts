@@ -3,13 +3,13 @@ import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-age
 
 const EDITOR_RE = /^\s*(vi|vim|nvim)(?=$|\s)([\s\S]*)$/;
 
-function runNvim(ctx: ExtensionContext, cwd: string, nvimCommand: string): Promise<number | null> {
+function runVim(ctx: ExtensionContext, cwd: string, vimCommand: string): Promise<number | null> {
   return ctx.ui.custom<number | null>((tui, _theme, _keybindings, done) => {
     tui.stop();
     process.stdout.write("\x1b[2J\x1b[H");
 
     const shell = process.env.SHELL || "/bin/sh";
-    const result = spawnSync(shell, ["-c", nvimCommand], {
+    const result = spawnSync(shell, ["-c", vimCommand], {
       cwd,
       stdio: "inherit",
       env: process.env,
@@ -23,21 +23,21 @@ function runNvim(ctx: ExtensionContext, cwd: string, nvimCommand: string): Promi
   });
 }
 
-function toNvimCommand(command: string): string | undefined {
+function toVimCommand(command: string): string | undefined {
   const match = EDITOR_RE.exec(command);
   if (!match) return undefined;
-  return `nvim${match[2] ?? ""}`;
+  return `vim${match[2] ?? ""}`;
 }
 
 export default function viExtension(pi: ExtensionAPI) {
   pi.on("user_bash", async (event, ctx) => {
-    const nvimCommand = toNvimCommand(event.command);
-    if (!nvimCommand) return;
+    const vimCommand = toVimCommand(event.command);
+    if (!vimCommand) return;
 
     if (!ctx.hasUI) {
       return {
         result: {
-          output: "(nvim requires interactive mode)",
+          output: "(vim requires interactive mode)",
           exitCode: 1,
           cancelled: false,
           truncated: false,
@@ -45,14 +45,14 @@ export default function viExtension(pi: ExtensionAPI) {
       };
     }
 
-    const exitCode = await runNvim(ctx, event.cwd, nvimCommand);
+    const exitCode = await runVim(ctx, event.cwd, vimCommand);
 
     return {
       result: {
         output:
           exitCode === 0
-            ? "(nvim completed successfully)"
-            : `(nvim exited with code ${exitCode ?? 1})`,
+            ? "(vim completed successfully)"
+            : `(vim exited with code ${exitCode ?? 1})`,
         exitCode: exitCode ?? 1,
         cancelled: false,
         truncated: false,
@@ -61,10 +61,10 @@ export default function viExtension(pi: ExtensionAPI) {
   });
 
   pi.registerShortcut("alt+e", {
-    description: "Open nvim",
+    description: "Open vim",
     handler: async (ctx) => {
       if (!ctx.hasUI) return;
-      await runNvim(ctx, ctx.cwd, "nvim");
+      await runVim(ctx, ctx.cwd, "vim");
     },
   });
 }
