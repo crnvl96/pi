@@ -19,7 +19,7 @@ const DRAW_ASSETS = {
     contentType: "text/javascript; charset=utf-8",
   },
   "/assets/draw.css": {
-    path: join(EXTENSION_DIR, "src", "draw.css"),
+    path: join(DRAW_DIST_DIR, "draw.css"),
     contentType: "text/css; charset=utf-8",
   },
 } as const;

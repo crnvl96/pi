@@ -5,6 +5,7 @@ import React from "react";
 import { createRoot } from "react-dom/client";
 import { Tldraw, type Editor } from "tldraw";
 import "tldraw/tldraw.css";
+import "./draw.css";
 
 declare global {
   interface Window {
