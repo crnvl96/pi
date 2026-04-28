@@ -37,7 +37,7 @@ interface DiffDocument {
 }
 
 export default function diffExtension(pi: ExtensionAPI) {
-  pi.registerCommand("diff", {
+  pi.registerCommand("ext:diff", {
     description: "Render edit/write tool calls since the last user message in a scrollable overlay",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const diff = findRecentEditAndWriteCalls(ctx);

@@ -470,7 +470,7 @@ export default function contextExtension(pi: ExtensionAPI) {
 		}
 	});
 
-	pi.registerCommand("context", {
+	pi.registerCommand("ext:context", {
 		description: "Show context window usage, loaded instructions, extensions, skills, and session totals",
 		handler: async (_args, ctx: ExtensionCommandContext) => {
 			const commands = pi.getCommands();

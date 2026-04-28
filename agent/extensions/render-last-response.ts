@@ -5,7 +5,7 @@ const CHROME_LINES = 4;
 const TAB_REPLACEMENT = "    ";
 
 export default function renderLastResponseExtension(pi: ExtensionAPI) {
-  pi.registerCommand("render-last-response", {
+  pi.registerCommand("ext:last", {
     description: "Render the last assistant response as markdown in a full-screen scrollable overlay",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const response = findLastAssistantResponse(ctx);
