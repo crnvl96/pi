@@ -1562,7 +1562,7 @@ class BreakdownComponent implements Component {
   }
 }
 
-export default function sessionMetadataExtension(pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI) {
   pi.registerCommand("ext:session-metadata", {
     description:
       "Interactive breakdown of last 7/30/90 days of ~/.pi session usage by model, directory, day of week, and time of day",

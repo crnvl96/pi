@@ -156,7 +156,7 @@ function fit(text: string, width: number): string {
   return truncateToWidth(fitted, maxWidth, "", true);
 }
 
-export default function renderLastAgentResponseExtension(pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI) {
   pi.registerCommand("ext:render-last-agent-response", {
     description:
       "Render the last assistant response as markdown in a full-screen scrollable overlay",

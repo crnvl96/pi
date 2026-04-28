@@ -49,7 +49,7 @@ function toShellCommand(command: string): ShellCommand | undefined {
   return undefined;
 }
 
-export default function shellExtension(pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI) {
   pi.on("user_bash", async (event, ctx) => {
     const shellCommand = toShellCommand(event.command);
     if (!shellCommand) return;
