@@ -8,7 +8,9 @@ node_modules/
 # Generated extension/vendor bundles
 agent/extensions/*-dist/
 agent/vendor/*/*-dist/
+agent/vendor/*/dist/
 vendor/*/*-dist/
+vendor/*/dist/
 
 # Environment/secrets
 .env
