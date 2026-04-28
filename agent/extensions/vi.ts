@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const EDITOR_RE = /^\s*(vi|vim|nvim)(?=$|\s)([\s\S]*)$/;
 
@@ -19,23 +19,7 @@ export default function viExtension(pi: ExtensionAPI) {
       };
     }
 
-    const exitCode = await ctx.ui.custom<number | null>((tui, _theme, _keybindings, done) => {
-      tui.stop();
-      process.stdout.write("\x1b[2J\x1b[H");
-
-      const shell = process.env.SHELL || "/bin/sh";
-      const result = spawnSync(shell, ["-c", nvimCommand], {
-        cwd: event.cwd,
-        stdio: "inherit",
-        env: process.env,
-      });
-
-      tui.start();
-      tui.requestRender(true);
-      done(result.status ?? 1);
-
-      return { render: () => [], invalidate: () => {} };
-    });
+    const exitCode = await runNvim(ctx, event.cwd, nvimCommand);
 
     return {
       result: {
@@ -48,6 +32,34 @@ export default function viExtension(pi: ExtensionAPI) {
         truncated: false,
       },
     };
+  });
+
+  pi.registerShortcut("alt+v", {
+    description: "Open nvim",
+    handler: async (ctx) => {
+      if (!ctx.hasUI) return;
+      await runNvim(ctx, ctx.cwd, "nvim");
+    },
+  });
+}
+
+function runNvim(ctx: ExtensionContext, cwd: string, nvimCommand: string): Promise<number | null> {
+  return ctx.ui.custom<number | null>((tui, _theme, _keybindings, done) => {
+    tui.stop();
+    process.stdout.write("\x1b[2J\x1b[H");
+
+    const shell = process.env.SHELL || "/bin/sh";
+    const result = spawnSync(shell, ["-c", nvimCommand], {
+      cwd,
+      stdio: "inherit",
+      env: process.env,
+    });
+
+    tui.start();
+    tui.requestRender(true);
+    done(result.status ?? 1);
+
+    return { render: () => [], invalidate: () => {} };
   });
 }
 

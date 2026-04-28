@@ -25,7 +25,6 @@ interface ToolResultMessage {
 }
 
 interface MutationCall {
-  sequence: number;
   toolName: ToolName;
   toolCallId?: string;
   args: Record<string, unknown>;
@@ -241,7 +240,6 @@ function findRecentEditAndWriteCalls(ctx: ExtensionCommandContext): DiffDocument
   const lastUserIndex = findLastUserMessageIndex(branch);
   const resultByToolCallId = collectToolResults(branch);
   const calls: MutationCall[] = [];
-  let sequence = 0;
 
   for (let i = 0; i < branch.length; i++) {
     const entry = asRecord(branch[i]);
@@ -255,13 +253,11 @@ function findRecentEditAndWriteCalls(ctx: ExtensionCommandContext): DiffDocument
       const toolCall = asToolCallBlock(block);
       if (!toolCall) continue;
 
-      sequence++;
       if (i <= lastUserIndex) continue;
       if (!isMutationToolName(toolCall.name)) continue;
 
       const args = asRecord(toolCall.arguments) ?? {};
       calls.push({
-        sequence,
         toolName: toolCall.name,
         toolCallId: toolCall.id,
         args,
@@ -299,24 +295,21 @@ function collectToolResults(branch: unknown[]): Map<string, ToolResultMessage> {
 }
 
 function renderCalls(calls: MutationCall[]): DiffDocument {
-  const lines: string[] = [
-    "# Edit/write tools since last user message",
-    "",
-    `Found ${calls.length} tool call${calls.length === 1 ? "" : "s"}.`,
-  ];
+  const lines: string[] = [];
   const anchors: string[] = [];
 
-  for (const call of calls) {
-    anchors.push(callHeading(call));
-    lines.push("", renderCall(call));
-  }
+  calls.forEach((call, index) => {
+    const heading = callHeading(call, index + 1, calls.length);
+    anchors.push(heading);
+    lines.push(renderCall(call, heading));
+  });
 
-  return { markdown: lines.join("\n"), anchors };
+  return { markdown: lines.join("\n\n"), anchors };
 }
 
-function renderCall(call: MutationCall): string {
+function renderCall(call: MutationCall, heading: string): string {
   const path = getString(call.args, "path") ?? "(unknown path)";
-  const lines: string[] = [`## ${callHeading(call)}`, "", `- Path: \`${path}\``];
+  const lines: string[] = [`## ${heading}`, "", `- Path: \`${path}\``];
 
   if (call.toolCallId) lines.push(`- Tool call ID: \`${call.toolCallId}\``);
   if (call.result?.isError) lines.push("- Result: error");
@@ -331,8 +324,8 @@ function renderCall(call: MutationCall): string {
   return lines.join("\n");
 }
 
-function callHeading(call: MutationCall): string {
-  return `agent: ${call.toolName} [${call.sequence}]`;
+function callHeading(call: MutationCall, current: number, total: number): string {
+  return `agent: ${call.toolName} [${current}/${total}]`;
 }
 
 function renderEditCall(call: MutationCall): string[] {
