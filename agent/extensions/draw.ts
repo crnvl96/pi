@@ -1,15 +1,28 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const HOST = "127.0.0.1";
 const TMP_DIR = "/tmp";
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
-const TLDRAW_VERSION = "4.5.10";
-const REACT_VERSION = "19.2.1";
+const DRAW_ASSET_CACHE_SECONDS = 31_536_000;
+const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
+const DRAW_ASSETS = {
+  "/assets/draw-ui.js": {
+    path: join(EXTENSION_DIR, "draw-dist", "draw-ui.js"),
+    contentType: "text/javascript; charset=utf-8",
+  },
+  "/assets/draw-ui.css": {
+    path: join(EXTENSION_DIR, "draw-dist", "draw-ui.css"),
+    contentType: "text/css; charset=utf-8",
+  },
+} as const;
+
+let drawAssetVersion: string | undefined;
 
 type SubmitResult = {
   path: string;
@@ -87,6 +100,40 @@ function writeJson(res: ServerResponse, statusCode: number, value: unknown) {
   res.end(JSON.stringify(value));
 }
 
+async function getDrawAssetVersion(): Promise<string> {
+  if (drawAssetVersion) return drawAssetVersion;
+
+  try {
+    const hash = createHash("sha256");
+    for (const asset of Object.values(DRAW_ASSETS)) {
+      hash.update(await readFile(asset.path));
+    }
+    drawAssetVersion = hash.digest("hex").slice(0, 16);
+    return drawAssetVersion;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Draw UI bundle is missing or unreadable. Run "npm run build:draw" to generate agent/extensions/draw-dist. ${message}`,
+    );
+  }
+}
+
+function isDrawAssetPath(pathname: string): pathname is keyof typeof DRAW_ASSETS {
+  return Object.hasOwn(DRAW_ASSETS, pathname);
+}
+
+async function writeDrawAsset(res: ServerResponse, pathname: keyof typeof DRAW_ASSETS) {
+  const asset = DRAW_ASSETS[pathname];
+  const [body, version] = await Promise.all([readFile(asset.path), getDrawAssetVersion()]);
+  res.writeHead(200, {
+    "Content-Type": asset.contentType,
+    "Content-Length": body.byteLength,
+    "Cache-Control": `public, max-age=${DRAW_ASSET_CACHE_SECONDS}, immutable`,
+    ETag: `"${version}"`,
+  });
+  res.end(body);
+}
+
 function openBrowser(url: string): Promise<void> {
   const command =
     process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
@@ -102,17 +149,17 @@ function openBrowser(url: string): Promise<void> {
   });
 }
 
-function renderDrawPage(token: string): string {
+function renderDrawPage(token: string, assetVersion: string): string {
   const tokenJson = JSON.stringify(token);
-  const tldrawVersion = encodeURIComponent(TLDRAW_VERSION);
-  const reactVersion = encodeURIComponent(REACT_VERSION);
+  const assetVersionQuery = encodeURIComponent(assetVersion);
   return `<!doctype html>
 <html lang="en">
 <head>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<title>pi draw</title>
-	<link rel="stylesheet" href="https://unpkg.com/tldraw@${tldrawVersion}/tldraw.css" />
+	<link rel="stylesheet" href="/assets/draw-ui.css?v=${assetVersionQuery}" />
+	<link rel="modulepreload" href="/assets/draw-ui.js?v=${assetVersionQuery}" />
 	<style>
 		:root {
 			--ink: #16130f;
@@ -203,107 +250,8 @@ function renderDrawPage(token: string): string {
 		<button id="submit" class="draw-button" type="button" disabled>Submit to Pi</button>
 	</div>
 
-	<script type="module">
-		import React from "https://esm.sh/react@${reactVersion}";
-		import { createRoot } from "https://esm.sh/react-dom@${reactVersion}/client";
-		import { Tldraw } from "https://esm.sh/tldraw@${tldrawVersion}?deps=react@${reactVersion},react-dom@${reactVersion}";
-
-		const TOKEN = ${tokenJson};
-		const submitButton = document.getElementById("submit");
-		let editor = null;
-		let submitting = false;
-		let feedbackTimer = null;
-
-		function flashButton(className) {
-			submitButton.classList.remove("did-submit", "did-error");
-			if (feedbackTimer) clearTimeout(feedbackTimer);
-			submitButton.classList.add(className);
-			feedbackTimer = setTimeout(() => submitButton.classList.remove(className), 650);
-		}
-
-		function updateButton() {
-			submitButton.disabled = !editor || submitting;
-			submitButton.classList.toggle("is-submitting", submitting);
-			submitButton.setAttribute("aria-busy", submitting ? "true" : "false");
-		}
-
-		async function submitDrawing() {
-			if (!editor || submitting) return;
-
-			const ids = Array.from(editor.getCurrentPageShapeIds());
-			if (ids.length === 0) {
-				flashButton("did-error");
-				return;
-			}
-
-			submitting = true;
-			updateButton();
-
-			try {
-				if (editor.fonts?.loadRequiredFontsForCurrentPage) {
-					await editor.fonts.loadRequiredFontsForCurrentPage(editor.options.maxFontsToLoadBeforeRender);
-				}
-
-				const result = await editor.toImage(ids, {
-					format: "png",
-					background: true,
-					padding: 48,
-					scale: 2,
-					darkMode: false,
-				});
-				if (!result?.blob) throw new Error("Could not render this drawing.");
-
-				const response = await fetch("/submit?token=" + encodeURIComponent(TOKEN), {
-					method: "POST",
-					headers: { "Content-Type": "image/png" },
-					body: result.blob,
-				});
-				const data = await response.json().catch(() => ({}));
-				if (!response.ok || !data.ok) {
-					throw new Error(data.error || response.statusText || "Submit failed");
-				}
-
-				flashButton(data.inserted ? "did-submit" : "did-error");
-			} catch (error) {
-				console.error(error);
-				flashButton("did-error");
-			} finally {
-				submitting = false;
-				updateButton();
-			}
-		}
-
-		submitButton.addEventListener("click", submitDrawing);
-
-		const events = new EventSource("/events?token=" + encodeURIComponent(TOKEN));
-
-		function notifyClosed() {
-			try {
-				navigator.sendBeacon("/closed?token=" + encodeURIComponent(TOKEN), new Blob([], { type: "text/plain" }));
-			} catch (_) {
-				// Best effort only.
-			}
-		}
-		window.addEventListener("pagehide", notifyClosed);
-		window.addEventListener("beforeunload", notifyClosed);
-
-		function App() {
-			return React.createElement(Tldraw, {
-				persistenceKey: "pi-draw-canvas",
-				autoFocus: true,
-				onMount: (mountedEditor) => {
-					editor = mountedEditor;
-					updateButton();
-					return () => {
-						editor = null;
-						updateButton();
-					};
-				},
-			});
-		}
-
-		createRoot(document.getElementById("root")).render(React.createElement(App));
-	</script>
+	<script>window.__PI_DRAW_TOKEN__ = ${tokenJson};</script>
+	<script type="module" src="/assets/draw-ui.js?v=${assetVersionQuery}"></script>
 </body>
 </html>`;
 }
@@ -365,12 +313,18 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
+    if (req.method === "GET" && isDrawAssetPath(url.pathname)) {
+      await writeDrawAsset(res, url.pathname);
+      return;
+    }
+
     if (req.method === "GET" && (url.pathname === "/" || url.pathname === "/draw")) {
       if (url.searchParams.get("token") !== token) {
         writeText(res, 403, "Forbidden");
         return;
       }
-      writeHtml(res, renderDrawPage(token));
+      const assetVersion = await getDrawAssetVersion();
+      writeHtml(res, renderDrawPage(token, assetVersion));
       return;
     }
 
@@ -444,6 +398,7 @@ export default function (pi: ExtensionAPI) {
   async function ensureServer(): Promise<string> {
     if (server && baseUrl) return baseUrl;
 
+    await getDrawAssetVersion();
     token = randomUUID();
     server = createServer((req, res) => {
       void handleRequest(req, res).catch((error) => {
@@ -472,18 +427,20 @@ export default function (pi: ExtensionAPI) {
 
   async function openCanvas(ctx: ExtensionContext) {
     setLastCtx(ctx);
-    const urlBase = await ensureServer();
-    const url = `${urlBase}/draw?token=${encodeURIComponent(token)}`;
+    let url: string | undefined;
 
     try {
+      const urlBase = await ensureServer();
+      url = `${urlBase}/draw?token=${encodeURIComponent(token)}`;
       await openBrowser(url);
       const message = pageConnected
         ? "Drawing canvas reopened. Click Submit to add a screenshot to the prompt."
         : "Drawing canvas opened. Click Submit to add a screenshot to the prompt.";
       ctx.ui.notify(message, "info");
     } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       ctx.ui.notify(
-        `Could not open browser: ${error instanceof Error ? error.message : String(error)}. Open ${url} manually.`,
+        url ? `Could not open browser: ${message}. Open ${url} manually.` : `Could not start draw canvas: ${message}`,
         "error",
       );
     }

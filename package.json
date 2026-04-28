@@ -3,14 +3,20 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "npm run build:draw",
+    "build:draw": "esbuild agent/draw-src/draw-ui.ts --bundle --format=esm --platform=browser --target=es2022 --minify --legal-comments=none --outfile=agent/extensions/draw-dist/draw-ui.js",
     "typecheck": "tsgo --noEmit --project tsconfig.json",
-    "lint": "oxlint ."
+    "lint": "oxlint --ignore-pattern 'agent/extensions/draw-dist/**' ."
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "^0.70.5",
     "@perplexity-ai/perplexity_ai": "^0.27.0",
     "@typescript/native-preview": "^7.0.0-dev.20260426.1",
+    "esbuild": "^0.28.0",
     "oxfmt": "^0.46.0",
-    "oxlint": "^1.61.0"
+    "oxlint": "^1.61.0",
+    "react": "19.2.1",
+    "react-dom": "19.2.1",
+    "tldraw": "4.5.10"
   }
 }
