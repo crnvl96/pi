@@ -1,6 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-export default function renameExtension(pi: ExtensionAPI) {
+export default function renameSessionExtension(pi: ExtensionAPI) {
 	pi.registerCommand("ext:rename-session", {
 		description: "Set or rename the current session (usage: /ext:rename-session [name])",
 		handler: async (args, ctx) => {

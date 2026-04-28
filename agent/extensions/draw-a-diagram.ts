@@ -114,7 +114,7 @@ async function getDrawAssetVersion(): Promise<string> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Draw UI bundle is missing or unreadable. Run "npm run build:draw" to generate agent/vendor/draw/draw-dist. ${message}`,
+      `Draw UI bundle is missing or unreadable. Run "npm run build:draw-a-diagram" to generate agent/vendor/draw/draw-dist. ${message}`,
     );
   }
 }
@@ -257,7 +257,7 @@ function renderDrawPage(token: string, assetVersion: string): string {
 </html>`;
 }
 
-export default function (pi: ExtensionAPI) {
+export default function drawADiagramExtension(pi: ExtensionAPI) {
   let server: Server | undefined;
   let baseUrl: string | undefined;
   let token = randomUUID();
@@ -272,7 +272,7 @@ export default function (pi: ExtensionAPI) {
   function setPageConnected(connected: boolean) {
     pageConnected = connected;
     if (lastCtx?.hasUI) {
-      lastCtx.ui.setStatus("draw", connected ? "draw: open" : undefined);
+      lastCtx.ui.setStatus("draw-a-diagram", connected ? "draw-a-diagram: open" : undefined);
     }
   }
 

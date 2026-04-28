@@ -68,6 +68,6 @@ export function createEditToolOverride(cwd: string): EditToolOverride {
     },
   };
 }
-export default function editToolOverrideModule(pi: ExtensionAPI) {
+export default function editToolExtension(pi: ExtensionAPI) {
   pi.registerTool(createEditToolOverride(process.cwd()));
 }

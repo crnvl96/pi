@@ -29,7 +29,7 @@ function toVimCommand(command: string): string | undefined {
   return `vim${match[2] ?? ""}`;
 }
 
-export default function viExtension(pi: ExtensionAPI) {
+export default function vimExtension(pi: ExtensionAPI) {
   pi.on("user_bash", async (event, ctx) => {
     const vimCommand = toVimCommand(event.command);
     if (!vimCommand) return;
@@ -60,7 +60,7 @@ export default function viExtension(pi: ExtensionAPI) {
     };
   });
 
-  pi.registerCommand("ext:vi", {
+  pi.registerCommand("ext:vim", {
     description: "Open vim",
     handler: async (args, ctx) => {
       if (!ctx.hasUI) {

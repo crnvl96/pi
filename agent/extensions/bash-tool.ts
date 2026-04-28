@@ -72,6 +72,6 @@ export function createBashToolOverride(cwd: string): BashToolOverride {
     },
   };
 }
-export default function bashToolOverrideModule(pi: ExtensionAPI) {
+export default function bashToolExtension(pi: ExtensionAPI) {
   pi.registerTool(createBashToolOverride(process.cwd()));
 }

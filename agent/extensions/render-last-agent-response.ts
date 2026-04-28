@@ -143,8 +143,8 @@ function fit(text: string, width: number): string {
   return truncateToWidth(fitted, maxWidth, "", true);
 }
 
-export default function renderLastResponseExtension(pi: ExtensionAPI) {
-  pi.registerCommand("ext:last", {
+export default function renderLastAgentResponseExtension(pi: ExtensionAPI) {
+  pi.registerCommand("ext:render-last-agent-response", {
     description: "Render the last assistant response as markdown in a full-screen scrollable overlay",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const response = findLastAssistantResponse(ctx);
@@ -155,7 +155,7 @@ export default function renderLastResponseExtension(pi: ExtensionAPI) {
 
       if (!ctx.hasUI) {
         pi.sendMessage(
-          { customType: "render-last-response", content: response, display: true },
+          { customType: "render-last-agent-response", content: response, display: true },
           { triggerTurn: false },
         );
         return;

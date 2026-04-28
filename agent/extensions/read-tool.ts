@@ -63,6 +63,6 @@ export function createReadToolOverride(cwd: string): ReadToolOverride {
     },
   };
 }
-export default function readToolOverrideModule(pi: ExtensionAPI) {
+export default function readToolExtension(pi: ExtensionAPI) {
   pi.registerTool(createReadToolOverride(process.cwd()));
 }

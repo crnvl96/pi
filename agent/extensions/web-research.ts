@@ -611,7 +611,7 @@ function formatPerplexityResponseNote(note: string) {
   return ["PERPLEXITY_RESPONSE_NOTE", note, "END_PERPLEXITY_RESPONSE_NOTE"].join("\n");
 }
 
-export default function (pi: ExtensionAPI) {
+export default function webResearchExtension(pi: ExtensionAPI) {
   const apiKey = process.env.PERPLEXITY_API_KEY?.trim();
 
   if (!apiKey) {

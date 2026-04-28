@@ -22,7 +22,7 @@ function runLazygit(ctx: ExtensionContext, cwd: string): Promise<number | null> 
   });
 }
 
-export default function lzgExtension(pi: ExtensionAPI) {
+export default function lazygitExtension(pi: ExtensionAPI) {
   pi.on("user_bash", async (event, ctx) => {
     if (!LAZYGIT_RE.test(event.command)) return;
 
@@ -52,7 +52,7 @@ export default function lzgExtension(pi: ExtensionAPI) {
     };
   });
 
-  pi.registerCommand("ext:lzg", {
+  pi.registerCommand("ext:lazygit", {
     description: "Open lazygit",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) {

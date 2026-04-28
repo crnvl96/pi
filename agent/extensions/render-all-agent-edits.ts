@@ -467,8 +467,8 @@ function fit(text: string, width: number): string {
   return truncateToWidth(fitted, maxWidth, "", true);
 }
 
-export default function diffExtension(pi: ExtensionAPI) {
-  pi.registerCommand("ext:diff", {
+export default function renderAllAgentEditsExtension(pi: ExtensionAPI) {
+  pi.registerCommand("ext:render-all-agent-edits", {
     description: "Render edit/write tool calls since the last user message in a scrollable overlay",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
       const diff = findRecentEditAndWriteCalls(ctx);
@@ -479,7 +479,7 @@ export default function diffExtension(pi: ExtensionAPI) {
 
       if (!ctx.hasUI) {
         pi.sendMessage(
-          { customType: "diff", content: diff.markdown, display: true },
+          { customType: "render-all-agent-edits", content: diff.markdown, display: true },
           { triggerTurn: false },
         );
         return;

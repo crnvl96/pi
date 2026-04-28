@@ -36,6 +36,6 @@ export function createWriteToolOverride(cwd: string): WriteToolOverride {
     },
   };
 }
-export default function writeToolOverrideModule(pi: ExtensionAPI) {
+export default function writeToolExtension(pi: ExtensionAPI) {
   pi.registerTool(createWriteToolOverride(process.cwd()));
 }

@@ -1,5 +1,5 @@
 /**
- * /context
+ * /ext:context-usage
  *
  * Small TUI view showing what's loaded/available:
  * - extensions (best-effort from registered extension slash commands)
@@ -134,7 +134,7 @@ function buildSkillIndex(pi: ExtensionAPI, cwd: string): SkillIndexEntry[] {
 		.filter((x) => x.name && x.skillDir);
 }
 
-const SKILL_LOADED_ENTRY = "context:skill_loaded";
+const SKILL_LOADED_ENTRY = "context-usage:skill_loaded";
 
 type SkillLoadedEntryData = {
 	name: string;
@@ -421,7 +421,7 @@ class ContextView implements Component {
 	}
 }
 
-export default function contextExtension(pi: ExtensionAPI) {
+export default function contextUsageExtension(pi: ExtensionAPI) {
 	// Track which skills were actually pulled in via read tool calls.
 	let lastSessionId: string | null = null;
 	let cachedLoadedSkills = new Set<string>();
@@ -470,7 +470,7 @@ export default function contextExtension(pi: ExtensionAPI) {
 		}
 	});
 
-	pi.registerCommand("ext:context", {
+	pi.registerCommand("ext:context-usage", {
 		description: "Show context window usage, loaded instructions, extensions, skills, and session totals",
 		handler: async (_args, ctx: ExtensionCommandContext) => {
 			const commands = pi.getCommands();
@@ -543,7 +543,7 @@ export default function contextExtension(pi: ExtensionAPI) {
 			};
 
 			if (!ctx.hasUI) {
-				pi.sendMessage({ customType: "context", content: makePlainText(), display: true }, { triggerTurn: false });
+				pi.sendMessage({ customType: "context-usage", content: makePlainText(), display: true }, { triggerTurn: false });
 				return;
 			}
 

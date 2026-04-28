@@ -1,5 +1,5 @@
 /**
- * /session-breakdown
+ * /ext:session-metadata
  *
  * Interactive TUI that analyzes ~/.pi/agent/sessions (recursively, *.jsonl) and shows
  * last 7/30/90 days of:
@@ -1341,7 +1341,7 @@ class BreakdownComponent implements Component {
 		};
 
 		const header =
-			`${bold("Session breakdown")}  ${tab(7, 0)}${tab(30, 1)}${tab(90, 2)}  ` +
+			`${bold("Session metadata")}  ${tab(7, 0)}${tab(30, 1)}${tab(90, 2)}  ` +
 			`${metricTab("sessions", "sessions")}${metricTab("messages", "messages")}${metricTab("tokens", "tokens")}  ` +
 			`${viewTab("model", "models")}${viewTab("cwd", "directories")}${viewTab("dow", "days of the week")}${viewTab("tod", "time of day")}`;
 
@@ -1478,8 +1478,8 @@ class BreakdownComponent implements Component {
 	}
 }
 
-export default function sessionBreakdownExtension(pi: ExtensionAPI) {
-	pi.registerCommand("ext:sessions", {
+export default function sessionMetadataExtension(pi: ExtensionAPI) {
+	pi.registerCommand("ext:session-metadata", {
 		description: "Interactive breakdown of last 7/30/90 days of ~/.pi session usage by model, directory, day of week, and time of day",
 		handler: async (_args, ctx: ExtensionContext) => {
 			if (!ctx.hasUI) {
@@ -1488,8 +1488,8 @@ export default function sessionBreakdownExtension(pi: ExtensionAPI) {
 				const range = data.ranges.get(30)!;
 				pi.sendMessage(
 					{
-						customType: "session-breakdown",
-						content: `Session breakdown (non-interactive)\n${rangeSummary(range, 30, "tokens")}`,
+						customType: "session-metadata",
+						content: `Session metadata (non-interactive)\n${rangeSummary(range, 30, "tokens")}`,
 						display: true,
 					},
 					{ triggerTurn: false },
@@ -1549,7 +1549,7 @@ export default function sessionBreakdownExtension(pi: ExtensionAPI) {
 					})
 					.catch((err) => {
 						stopTicker();
-						console.error("session-breakdown: failed to analyze sessions", err);
+						console.error("session-metadata: failed to analyze sessions", err);
 						if (!aborted) done(null);
 					});
 
