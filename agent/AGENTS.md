@@ -62,12 +62,3 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
-
-### 5. ASCII-only writing
-
-Use ASCII characters only in all generated or edited text.
-
-- Write content using only characters in the ASCII range (U+0000 to U+007F).
-- Prefer `-` instead of em/en dashes.
-- Prefer straight quotes (`'` and `"`) instead of curly quotes.
-- Avoid symbols like ellipsis (`...`) and non-ASCII bullets.

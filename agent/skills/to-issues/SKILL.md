@@ -1,12 +1,12 @@
 ---
 name: to-issues
-description: Break a plan, spec, or PRD into independently-grabbable GitHub issues using tracer-bullet vertical slices. Use when user wants to convert a plan into issues, create implementation tickets, or break down work into issues.
+description: Break a plan, spec, or PRD into independently-grabbable issue drafts using tracer-bullet vertical slices and ask the user what to do with them. Use when user wants to convert a plan into issues, create implementation tickets, or break down work into issues.
 disable-model-invocation: true
 ---
 
 # To Issues
 
-Break a plan into independently-grabbable GitHub issues using vertical slices (tracer bullets).
+Break a plan into independently-grabbable issue drafts using vertical slices (tracer bullets).
 
 ## Process
 
@@ -48,11 +48,13 @@ Ask the user:
 
 Iterate until the user approves the breakdown.
 
-### 5. Create the GitHub issues
+### 5. Present the issue drafts
 
-For each approved slice, create a GitHub issue using `gh issue create`. Use the issue body template below.
+For each approved slice, write an issue draft using the issue body template below.
 
-Create issues in dependency order (blockers first) so you can reference real issue numbers in the "Blocked by" field.
+Do NOT create GitHub issues automatically. After presenting the issue drafts, ask the user what they want to do with them before taking any follow-up action.
+
+If the user later asks you to create GitHub issues, create them in dependency order (blockers first) so you can reference real issue numbers in the "Blocked by" field.
 
 <issue-template>
 ## Parent
