@@ -17,6 +17,7 @@ import {
   type ExtensionAPI,
   type TruncationResult,
 } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
 const SEARCH_MAX_RESULTS = 5;
@@ -38,6 +39,8 @@ const UNTRUSTED_FETCH_WARNING =
 
 const WEB_CONTEXT_FORMAT = "pi-web-context-v1";
 const WEB_CONTEXT_PROVIDER = "Perplexity";
+const RENDER_TEXT_MAX_LENGTH = 80;
+const RENDER_EXPANDED_ITEMS = 10;
 
 type WebSearchResultDetails = {
   title: string;
@@ -130,6 +133,22 @@ type FormattedFetchToolContext = {
   fullOutput?: string;
   truncation?: TruncationResult;
 };
+
+function truncateDisplay(text: string, maxLength: number) {
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  if (maxLength <= 3) {
+    return text.slice(0, maxLength);
+  }
+
+  return `${text.slice(0, maxLength - 3)}...`;
+}
+
+function pluralize(count: number, singular: string, plural = `${singular}s`) {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
 
 function formatOmitted(truncation: TruncationResult) {
   const omittedLines = truncation.totalLines - truncation.outputLines;
@@ -648,6 +667,63 @@ export default function (pi: ExtensionAPI) {
         ),
       ),
     }),
+    renderCall(args, theme, _context) {
+      const query = typeof args.query === "string" && args.query ? args.query : "...";
+      let text = theme.fg("toolTitle", theme.bold("web_search "));
+      text += theme.fg("accent", truncateDisplay(query, RENDER_TEXT_MAX_LENGTH));
+
+      if (Array.isArray(args.domains) && args.domains.length > 0) {
+        const domains = args.domains.filter((domain) => typeof domain === "string");
+        const displayDomains = domains.slice(0, 3).join(", ");
+        const suffix = domains.length > 3 ? ", ..." : "";
+        text += theme.fg("dim", ` (${displayDomains}${suffix})`);
+      }
+
+      return new Text(text, 0, 0);
+    },
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (isPartial) return new Text(theme.fg("warning", "Searching..."), 0, 0);
+
+      const content = result.content[0];
+
+      if (context.isError) {
+        const message = content?.type === "text" ? content.text.split("\n")[0] : "Error";
+        return new Text(theme.fg("error", message), 0, 0);
+      }
+
+      const details = result.details as WebSearchToolDetails | undefined;
+      const results = details?.results ?? [];
+      const resultCount = details?.resultCount ?? results.length;
+      let text = theme.fg("success", pluralize(resultCount, "result"));
+
+      if (details?.truncation?.truncated) {
+        text += theme.fg("warning", " [truncated]");
+      }
+
+      if (details?.fullOutputPath) {
+        text += theme.fg("dim", " (full output saved)");
+      }
+
+      if (expanded) {
+        for (const [index, item] of results.slice(0, RENDER_EXPANDED_ITEMS).entries()) {
+          text += `\n${theme.fg("accent", `${index + 1}. ${truncateDisplay(item.title, RENDER_TEXT_MAX_LENGTH)}`)}`;
+          text += `\n${theme.fg("dim", truncateDisplay(item.url, RENDER_TEXT_MAX_LENGTH))}`;
+          if (item.truncation?.truncated) {
+            text += theme.fg("warning", " [snippet truncated]");
+          }
+        }
+
+        if (results.length > RENDER_EXPANDED_ITEMS) {
+          text += `\n${theme.fg("muted", `... ${results.length - RENDER_EXPANDED_ITEMS} more results`)}`;
+        }
+
+        if (details?.fullOutputPath) {
+          text += `\n${theme.fg("muted", `full output: ${details.fullOutputPath}`)}`;
+        }
+      }
+
+      return new Text(text, 0, 0);
+    },
     execute: async (_toolCallId, params, signal) => {
       if (typeof params.query !== "string") {
         throw new Error("query must be a string");
@@ -761,6 +837,66 @@ export default function (pi: ExtensionAPI) {
       }
 
       return args as { urls: string[] };
+    },
+    renderCall(args, theme, _context) {
+      const urls = Array.isArray(args.urls)
+        ? args.urls.filter((url) => typeof url === "string")
+        : [];
+      let text = theme.fg("toolTitle", theme.bold("web_fetch "));
+
+      if (urls.length === 0) {
+        text += theme.fg("accent", "...");
+      } else if (urls.length === 1) {
+        text += theme.fg("accent", truncateDisplay(urls[0], RENDER_TEXT_MAX_LENGTH));
+      } else {
+        text += theme.fg("accent", pluralize(urls.length, "url"));
+        text += theme.fg("dim", ` (${truncateDisplay(urls[0], RENDER_TEXT_MAX_LENGTH)})`);
+      }
+
+      return new Text(text, 0, 0);
+    },
+    renderResult(result, { expanded, isPartial }, theme, context) {
+      if (isPartial) return new Text(theme.fg("warning", "Fetching..."), 0, 0);
+
+      const content = result.content[0];
+
+      if (context.isError) {
+        const message = content?.type === "text" ? content.text.split("\n")[0] : "Error";
+        return new Text(theme.fg("error", message), 0, 0);
+      }
+
+      const details = result.details as WebFetchToolDetails | undefined;
+      const contents = details?.contents ?? [];
+      const resultCount = details?.resultCount ?? contents.length;
+      let text = theme.fg("success", pluralize(resultCount, "page"));
+
+      if (details?.truncation?.truncated) {
+        text += theme.fg("warning", " [truncated]");
+      }
+
+      if (details?.fullOutputPath) {
+        text += theme.fg("dim", " (full output saved)");
+      }
+
+      if (expanded) {
+        for (const [index, item] of contents.slice(0, RENDER_EXPANDED_ITEMS).entries()) {
+          text += `\n${theme.fg("accent", `${index + 1}. ${truncateDisplay(item.title, RENDER_TEXT_MAX_LENGTH)}`)}`;
+          text += `\n${theme.fg("dim", truncateDisplay(item.url, RENDER_TEXT_MAX_LENGTH))}`;
+          if (item.truncation?.truncated) {
+            text += theme.fg("warning", " [content truncated]");
+          }
+        }
+
+        if (contents.length > RENDER_EXPANDED_ITEMS) {
+          text += `\n${theme.fg("muted", `... ${contents.length - RENDER_EXPANDED_ITEMS} more pages`)}`;
+        }
+
+        if (details?.fullOutputPath) {
+          text += `\n${theme.fg("muted", `full output: ${details.fullOutputPath}`)}`;
+        }
+      }
+
+      return new Text(text, 0, 0);
     },
     execute: async (_toolCallId, params, signal) => {
       if (!Array.isArray(params.urls)) {
