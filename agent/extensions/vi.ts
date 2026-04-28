@@ -34,7 +34,7 @@ export default function viExtension(pi: ExtensionAPI) {
     };
   });
 
-  pi.registerShortcut("alt+v", {
+  pi.registerShortcut("alt+e", {
     description: "Open nvim",
     handler: async (ctx) => {
       if (!ctx.hasUI) return;
