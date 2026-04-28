@@ -34,12 +34,12 @@ npm run lint        # Lint the config/extensions
 
 ## Draw extension
 
-`agent/extensions/draw.ts` registers `alt+c` to open a local tldraw board. The board UI is bundled locally for faster startup:
+`agent/extensions/draw-a-diagram.ts` registers `alt+w` to open a local tldraw board. The board UI is bundled locally under `agent/vendor/draw/` for faster startup:
 
-- Source: `agent/draw-src/draw-ui.ts`
-- Generated assets: `agent/extensions/draw-dist/draw-ui.js` and `.css`
+- Source: `agent/vendor/draw/draw-src/draw-ui.ts`
+- Generated assets: `agent/vendor/draw/draw-dist/draw-ui.js` and `.css`
 
-After changing `agent/draw-src/draw-ui.ts`, run:
+After changing `agent/vendor/draw/draw-src/draw-ui.ts`, run:
 
 ```bash
 npm run build:draw

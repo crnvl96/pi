@@ -11,13 +11,14 @@ const TMP_DIR = "/tmp";
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const DRAW_ASSET_CACHE_SECONDS = 31_536_000;
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
+const DRAW_DIST_DIR = join(EXTENSION_DIR, "..", "vendor", "draw", "draw-dist");
 const DRAW_ASSETS = {
   "/assets/draw-ui.js": {
-    path: join(EXTENSION_DIR, "draw-dist", "draw-ui.js"),
+    path: join(DRAW_DIST_DIR, "draw-ui.js"),
     contentType: "text/javascript; charset=utf-8",
   },
   "/assets/draw-ui.css": {
-    path: join(EXTENSION_DIR, "draw-dist", "draw-ui.css"),
+    path: join(DRAW_DIST_DIR, "draw-ui.css"),
     contentType: "text/css; charset=utf-8",
   },
 } as const;
@@ -113,7 +114,7 @@ async function getDrawAssetVersion(): Promise<string> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Draw UI bundle is missing or unreadable. Run "npm run build:draw" to generate agent/extensions/draw-dist. ${message}`,
+      `Draw UI bundle is missing or unreadable. Run "npm run build:draw" to generate agent/vendor/draw/draw-dist. ${message}`,
     );
   }
 }
