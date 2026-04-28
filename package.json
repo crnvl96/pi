@@ -4,9 +4,9 @@
   "type": "module",
   "scripts": {
     "build": "npm run build:draw-a-diagram",
-    "build:draw-a-diagram": "esbuild agent/vendor/draw-a-diagram/src/draw-ui.ts --bundle --format=esm --platform=browser --target=es2022 --minify --legal-comments=none --outfile=agent/vendor/draw-a-diagram/dist/draw-ui.js",
+    "build:draw-a-diagram": "esbuild agent/extensions/draw-a-diagram/src/draw-ui.ts --bundle --format=esm --platform=browser --target=es2022 --minify --legal-comments=none --outfile=agent/extensions/draw-a-diagram/dist/draw-ui.js",
     "typecheck": "tsgo --noEmit --project tsconfig.json",
-    "lint": "oxlint --ignore-pattern 'agent/vendor/draw-a-diagram/dist/**' ."
+    "lint": "oxlint --ignore-pattern 'agent/extensions/draw-a-diagram/dist/**' ."
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "^0.70.5",

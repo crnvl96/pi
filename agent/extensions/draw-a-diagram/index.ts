@@ -11,7 +11,8 @@ const TMP_DIR = "/tmp";
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
 const DRAW_ASSET_CACHE_SECONDS = 31_536_000;
 const EXTENSION_DIR = dirname(fileURLToPath(import.meta.url));
-const DRAW_DIST_DIR = join(EXTENSION_DIR, "..", "vendor", "draw-a-diagram", "dist");
+const DRAW_DIST_DIR = join(EXTENSION_DIR, "dist");
+const DRAW_PAGE_TEMPLATE_PATH = join(EXTENSION_DIR, "src", "draw-page.html");
 const DRAW_ASSETS = {
   "/assets/draw-ui.js": {
     path: join(DRAW_DIST_DIR, "draw-ui.js"),
@@ -22,7 +23,7 @@ const DRAW_ASSETS = {
     contentType: "text/css; charset=utf-8",
   },
   "/assets/draw-a-diagram.css": {
-    path: join(EXTENSION_DIR, "..", "vendor", "draw-a-diagram", "draw-a-diagram.css"),
+    path: join(EXTENSION_DIR, "src", "draw-a-diagram.css"),
     contentType: "text/css; charset=utf-8",
   },
 } as const;
@@ -118,7 +119,7 @@ async function getDrawAssetVersion(): Promise<string> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
-      `Draw UI bundle is missing or unreadable. Run "npm run build:draw-a-diagram" to generate agent/vendor/draw-a-diagram/dist. ${message}`,
+      `Draw UI bundle is missing or unreadable. Run "npm run build:draw-a-diagram" to generate agent/extensions/draw-a-diagram/dist. ${message}`,
     );
   }
 }
@@ -154,29 +155,19 @@ function openBrowser(url: string): Promise<void> {
   });
 }
 
-function renderDrawPage(token: string, assetVersion: string): string {
-  const tokenJson = JSON.stringify(token);
-  const assetVersionQuery = encodeURIComponent(assetVersion);
-  return `<!doctype html>
-<html lang="en">
-<head>
-	<meta charset="utf-8" />
-	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<title>pi draw</title>
-	<link rel="stylesheet" href="/assets/draw-ui.css?v=${assetVersionQuery}" />
-	<link rel="modulepreload" href="/assets/draw-ui.js?v=${assetVersionQuery}" />
-	<link rel="stylesheet" href="/assets/draw-a-diagram.css?v=${assetVersionQuery}" />
-</head>
-<body>
-	<div id="root"></div>
-	<div class="draw-submit-wrap">
-		<button id="submit" class="draw-button" type="button" disabled>Submit to Pi</button>
-	</div>
+function replacePlaceholder(template: string, name: string, value: string): string {
+  return template.split(`{{${name}}}`).join(value);
+}
 
-	<script>window.__PI_DRAW_TOKEN__ = ${tokenJson};</script>
-	<script type="module" src="/assets/draw-ui.js?v=${assetVersionQuery}"></script>
-</body>
-</html>`;
+function scriptJson(value: string): string {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+async function renderDrawPage(token: string, assetVersion: string): Promise<string> {
+  let html = await readFile(DRAW_PAGE_TEMPLATE_PATH, "utf8");
+  html = replacePlaceholder(html, "assetVersion", encodeURIComponent(assetVersion));
+  html = replacePlaceholder(html, "tokenJson", scriptJson(token));
+  return html;
 }
 
 export default function drawADiagramExtension(pi: ExtensionAPI) {
@@ -247,7 +238,7 @@ export default function drawADiagramExtension(pi: ExtensionAPI) {
         return;
       }
       const assetVersion = await getDrawAssetVersion();
-      writeHtml(res, renderDrawPage(token, assetVersion));
+      writeHtml(res, await renderDrawPage(token, assetVersion));
       return;
     }
 

@@ -5,7 +5,7 @@ sessions/
 # Dependencies
 node_modules/
 
-# Generated extension/vendor bundles
+# Generated extension bundles
 dist/
 
 # Environment/secrets
