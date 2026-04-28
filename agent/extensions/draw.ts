@@ -469,7 +469,7 @@ export default function (pi: ExtensionAPI) {
     lastCtx = undefined;
   });
 
-  pi.registerShortcut("alt+c", {
+  pi.registerShortcut("alt+w", {
     description: "Open tldraw canvas and add submitted screenshots to the prompt",
     handler: async (ctx) => {
       await openCanvas(ctx);

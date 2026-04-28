@@ -60,11 +60,15 @@ export default function viExtension(pi: ExtensionAPI) {
     };
   });
 
-  pi.registerShortcut("alt+e", {
+  pi.registerCommand("ext:vi", {
     description: "Open vim",
-    handler: async (ctx) => {
-      if (!ctx.hasUI) return;
-      await runVim(ctx, ctx.cwd, "vim");
+    handler: async (args, ctx) => {
+      if (!ctx.hasUI) {
+        ctx.ui.notify("vim requires interactive mode", "error");
+        return;
+      }
+      const trimmedArgs = args.trim();
+      await runVim(ctx, ctx.cwd, trimmedArgs ? `vim ${trimmedArgs}` : "vim");
     },
   });
 }

@@ -52,10 +52,13 @@ export default function lzgExtension(pi: ExtensionAPI) {
     };
   });
 
-  pi.registerShortcut("alt+g", {
+  pi.registerCommand("ext:lzg", {
     description: "Open lazygit",
-    handler: async (ctx) => {
-      if (!ctx.hasUI) return;
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) {
+        ctx.ui.notify("lazygit requires interactive mode", "error");
+        return;
+      }
       await runLazygit(ctx, ctx.cwd);
     },
   });
