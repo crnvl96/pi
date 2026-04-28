@@ -21,6 +21,10 @@ const DRAW_ASSETS = {
     path: join(DRAW_DIST_DIR, "draw-ui.css"),
     contentType: "text/css; charset=utf-8",
   },
+  "/assets/draw-a-diagram.css": {
+    path: join(EXTENSION_DIR, "..", "vendor", "draw-a-diagram", "draw-a-diagram.css"),
+    contentType: "text/css; charset=utf-8",
+  },
 } as const;
 
 let drawAssetVersion: string | undefined;
@@ -161,89 +165,7 @@ function renderDrawPage(token: string, assetVersion: string): string {
 	<title>pi draw</title>
 	<link rel="stylesheet" href="/assets/draw-ui.css?v=${assetVersionQuery}" />
 	<link rel="modulepreload" href="/assets/draw-ui.js?v=${assetVersionQuery}" />
-	<style>
-		:root {
-			--ink: #16130f;
-			--paper: #f8f0da;
-			--panel: rgba(248, 240, 218, 0.92);
-			--accent: #f05a28;
-			--accent-dark: #a63416;
-			--ok: #176d3a;
-			--warn: #9d6500;
-			--err: #a31919;
-			--shadow: 0 12px 34px rgba(22, 19, 15, 0.22);
-		}
-
-		* { box-sizing: border-box; }
-		html, body, #root { width: 100%; height: 100%; margin: 0; }
-		body {
-			background: var(--paper);
-			color: var(--ink);
-			font-family: ui-serif, Georgia, Cambria, "Times New Roman", serif;
-			overflow: hidden;
-		}
-		#root { position: fixed; inset: 0; }
-
-		.draw-submit-wrap {
-			position: fixed;
-			right: 0;
-			bottom: 0;
-			z-index: 10000;
-			padding: 8px;
-			border: 1px solid rgba(0, 0, 0, 0.08);
-			border-right: 0;
-			border-bottom: 0;
-			border-radius: 20px 0 0 0;
-			background: rgba(255, 255, 255, 0.94);
-			box-shadow: 0 3px 10px rgba(0, 0, 0, 0.16), 0 18px 42px rgba(0, 0, 0, 0.12);
-			backdrop-filter: blur(18px) saturate(1.15);
-		}
-
-		.draw-button {
-			appearance: none;
-			border: 0;
-			border-radius: 12px;
-			background: #2f80ed;
-			color: white;
-			cursor: pointer;
-			font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-			font-size: 15px;
-			font-weight: 700;
-			line-height: 1;
-			padding: 17px 22px;
-			box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
-			transition: transform 120ms ease, background 120ms ease, opacity 120ms ease;
-		}
-
-		.draw-button:hover:not(:disabled) {
-			background: #2374df;
-		}
-
-		.draw-button:active:not(:disabled) {
-			transform: scale(0.97);
-		}
-
-		.draw-button:disabled {
-			opacity: 0.5;
-			cursor: default;
-		}
-
-		.draw-button.is-submitting {
-			opacity: 0.72;
-		}
-
-		.draw-button.did-submit {
-			background: #1f9d55;
-		}
-
-		.draw-button.did-error {
-			background: #d64545;
-		}
-
-		@media (prefers-reduced-motion: reduce) {
-			.draw-button { transition: none; }
-		}
-	</style>
+	<link rel="stylesheet" href="/assets/draw-a-diagram.css?v=${assetVersionQuery}" />
 </head>
 <body>
 	<div id="root"></div>

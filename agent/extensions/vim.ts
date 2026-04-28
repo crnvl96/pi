@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
 const EDITOR_RE = /^\s*(vi|vim|nvim)(?=$|\s)([\s\S]*)$/;
+const VIM_COMPATIBLE_EDITORS = ["vim", "nvim", "vi"] as const;
 
 function runVim(ctx: ExtensionContext, cwd: string, vimCommand: string): Promise<number | null> {
   return ctx.ui.custom<number | null>((tui, _theme, _keybindings, done) => {
@@ -23,10 +24,33 @@ function runVim(ctx: ExtensionContext, cwd: string, vimCommand: string): Promise
   });
 }
 
+function commandExists(command: string): boolean {
+  const result = spawnSync("sh", ["-c", 'command -v "$1" >/dev/null 2>&1', "sh", command], {
+    stdio: "ignore",
+    env: process.env,
+  });
+  return result.status === 0;
+}
+
+function getConfiguredVimCommand(): string | undefined {
+  const editor = (process.env.VISUAL || process.env.EDITOR)?.trim();
+  if (!editor) return undefined;
+
+  const match = EDITOR_RE.exec(editor);
+  if (!match || !commandExists(match[1])) return undefined;
+  return editor;
+}
+
+function getVimCommand(): string {
+  return getConfiguredVimCommand() ?? VIM_COMPATIBLE_EDITORS.find(commandExists) ?? "vim";
+}
+
 function toVimCommand(command: string): string | undefined {
   const match = EDITOR_RE.exec(command);
   if (!match) return undefined;
-  return `vim${match[2] ?? ""}`;
+
+  const editor = commandExists(match[1]) ? match[1] : getVimCommand();
+  return `${editor}${match[2] ?? ""}`;
 }
 
 export default function vimExtension(pi: ExtensionAPI) {
@@ -61,14 +85,15 @@ export default function vimExtension(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("ext:vim", {
-    description: "Open vim",
+    description: "Open vim-compatible editor",
     handler: async (args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("vim requires interactive mode", "error");
         return;
       }
+      const vimCommand = getVimCommand();
       const trimmedArgs = args.trim();
-      await runVim(ctx, ctx.cwd, trimmedArgs ? `vim ${trimmedArgs}` : "vim");
+      await runVim(ctx, ctx.cwd, trimmedArgs ? `${vimCommand} ${trimmedArgs}` : vimCommand);
     },
   });
 }
