@@ -3,14 +3,24 @@ import { isToolCallEventType, type ExtensionAPI } from "@mariozechner/pi-coding-
 const PERMISSION_GATE_BASH_PATTERNS = [
   // git reset --hard
   /(?:^|[;&|\n]\s*)\s*git\s+reset\b(?=[^;&|\n]*--hard\b)/i,
+  // reset --hard
+  /(?:^|[;&|\n]\s*)\s*reset\b(?=[^;&|\n]*--hard\b)/i,
   // git clean --force / git clean -f
   /(?:^|[;&|\n]\s*)\s*git\s+clean\b(?=[^;&|\n]*(?:-[^\s;&|]*f|--force\b))/i,
   // git push --force / git push --delete / git push -f
   /(?:^|[;&|\n]\s*)\s*git\s+push\b(?=[^;&|\n]*(?:--force(?:-with-lease)?\b|--delete\b|-[^\s;&|]*f))/i,
+  // git push
+  /(?:^|[;&|\n]\s*)\s*git\s+push\b/i,
+  // push --force / push -f
+  /(?:^|[;&|\n]\s*)\s*push\b(?=[^;&|\n]*(?:--force(?:-with-lease)?\b|-[^\s;&|]*f))/i,
   // git branch -D
   /(?:^|[;&|\n]\s*)\s*git\s+branch\s+-D\b/i,
   // git checkout -- <path> / git checkout --force / git checkout -f
   /(?:^|[;&|\n]\s*)\s*git\s+checkout\b(?=[^;&|\n]*(?:\s--\s|\s-f\b|--force\b))/i,
+  // git checkout .
+  /(?:^|[;&|\n]\s*)\s*git\s+checkout\b(?=[^;&|\n]*\s\.(?:\s|$|[;&|\n]))/i,
+  // git restore .
+  /(?:^|[;&|\n]\s*)\s*git\s+restore\b(?=[^;&|\n]*\s\.(?:\s|$|[;&|\n]))/i,
 
   // sudo
   /(?:^|[;&|\n]\s*)\s*sudo\b/i,
