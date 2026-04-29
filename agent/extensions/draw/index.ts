@@ -381,7 +381,18 @@ export default function (pi: ExtensionAPI) {
     lastCtx = undefined;
   });
 
-  pi.registerShortcut("alt+w", {
+  pi.registerCommand("ext:draw", {
+    description: "Open tldraw canvas and add submitted screenshots to the prompt",
+    handler: async (_args, ctx) => {
+      if (!ctx.hasUI) {
+        ctx.ui.notify("draw requires interactive mode", "error");
+        return;
+      }
+      await openCanvas(ctx);
+    },
+  });
+
+  pi.registerShortcut("alt+d", {
     description: "Open tldraw canvas and add submitted screenshots to the prompt",
     handler: async (ctx) => {
       await openCanvas(ctx);

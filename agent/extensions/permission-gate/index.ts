@@ -1,18 +1,16 @@
 import { isToolCallEventType, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-const DANGEROUS_BASH_PATTERNS = [
+const PERMISSION_GATE_BASH_PATTERNS = [
   /\brm\b/i,
   /\bsudo\b/i,
   /\bprune\b/i,
   /\bchmod\b/i,
   /\bdelete\b/i,
   /\bdeletion\b/i,
-  /\bforce\b/i,
   /\breset\b/i,
   /\bterminate\b/i,
-  /\bclean\b/i,
   /\bgit\s+branch\s+-D\b/i,
-  /\bgit\s+checkout\b/i,
+  /\bgit\s+clean\b/i,
   /\bgit\s+restore\b/i,
   /\bgit\s+push\b/i,
 ];
@@ -22,23 +20,23 @@ export default function (pi: ExtensionAPI) {
     if (!isToolCallEventType("bash", event)) return;
 
     const command = String(event.input.command ?? "");
-    const match = DANGEROUS_BASH_PATTERNS.find((pattern) => pattern.test(command));
+    const match = PERMISSION_GATE_BASH_PATTERNS.find((pattern) => pattern.test(command));
 
     if (!match) return;
 
     if (!ctx.hasUI)
       return {
         block: true,
-        reason: `Dangerous command blocked (no UI for confirmation): ${match}`,
+        reason: `Permission gate blocked command (no UI for confirmation): ${match}`,
       };
 
-    const header = "Dangerous command";
-    const msg = `${command}\n\nDetected: ${match}\n\nAllow execution?`;
+    const header = "Permission gate";
+    const msg = `Potentially dangerous command:\n\n${command}\n\nDetected: ${match}\n\nAllow execution?`;
 
     if (!(await ctx.ui.confirm(header, msg)))
       return {
         block: true,
-        reason: `Blocked by user: ${match}`,
+        reason: `Blocked by permission gate: ${match}`,
       };
   });
 }

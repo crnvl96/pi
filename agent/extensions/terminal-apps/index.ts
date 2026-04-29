@@ -1,18 +1,23 @@
 import { spawnSync } from "node:child_process";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 
-const LAZYGIT_COMMAND = "/home/linuxbrew/.linuxbrew/bin/lazygit";
-const VIM_COMMAND = "/usr/bin/vimx";
+const LAZYGIT_COMMAND = "lazygit";
+const DEFAULT_EDITOR_COMMAND = "vim";
 
-const LAZYGIT_RE = /^\s*(lazygit|lzg|git)\s*$/;
-const VIM_RE = /^\s*(vi|vim|nvim)(?=$|\s)([\s\S]*)$/;
+const LAZYGIT_RE = /^\s*(lazygit|lzg)\s*$/;
+const EDITOR_RE = /^\s*(vi|vim|nvim)(?=$|\s)([\s\S]*)$/;
 
-type ShellCommand = {
+type TerminalAppCommand = {
   name: "lazygit" | "vim";
   command: string;
 };
 
-function runShellCommand(
+function preferredEditorCommand(args: string): string {
+  const editor = process.env.VISUAL?.trim() || process.env.EDITOR?.trim() || DEFAULT_EDITOR_COMMAND;
+  return args.trim() ? `${editor} ${args.trim()}` : editor;
+}
+
+function runTerminalApp(
   ctx: ExtensionContext,
   cwd: string,
   command: string,
@@ -36,14 +41,14 @@ function runShellCommand(
   });
 }
 
-function toShellCommand(command: string): ShellCommand | undefined {
+function toTerminalAppCommand(command: string): TerminalAppCommand | undefined {
   if (LAZYGIT_RE.test(command)) {
     return { name: "lazygit", command: LAZYGIT_COMMAND };
   }
 
-  const vimMatch = VIM_RE.exec(command);
-  if (vimMatch) {
-    return { name: "vim", command: `${VIM_COMMAND}${vimMatch[2] ?? ""}` };
+  const editorMatch = EDITOR_RE.exec(command);
+  if (editorMatch) {
+    return { name: "vim", command: `${editorMatch[1]}${editorMatch[2] ?? ""}` };
   }
 
   return undefined;
@@ -51,13 +56,13 @@ function toShellCommand(command: string): ShellCommand | undefined {
 
 export default function (pi: ExtensionAPI) {
   pi.on("user_bash", async (event, ctx) => {
-    const shellCommand = toShellCommand(event.command);
-    if (!shellCommand) return;
+    const terminalApp = toTerminalAppCommand(event.command);
+    if (!terminalApp) return;
 
     if (!ctx.hasUI) {
       return {
         result: {
-          output: `(${shellCommand.name} requires interactive mode)`,
+          output: `(${terminalApp.name} requires interactive mode)`,
           exitCode: 1,
           cancelled: false,
           truncated: false,
@@ -65,14 +70,14 @@ export default function (pi: ExtensionAPI) {
       };
     }
 
-    const exitCode = await runShellCommand(ctx, event.cwd, shellCommand.command);
+    const exitCode = await runTerminalApp(ctx, event.cwd, terminalApp.command);
 
     return {
       result: {
         output:
           exitCode === 0
-            ? `(${shellCommand.name} completed successfully)`
-            : `(${shellCommand.name} exited with code ${exitCode ?? 1})`,
+            ? `(${terminalApp.name} completed successfully)`
+            : `(${terminalApp.name} exited with code ${exitCode ?? 1})`,
         exitCode: exitCode ?? 1,
         cancelled: false,
         truncated: false,
@@ -87,7 +92,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify("lazygit requires interactive mode", "error");
         return;
       }
-      await runShellCommand(ctx, ctx.cwd, LAZYGIT_COMMAND);
+      await runTerminalApp(ctx, ctx.cwd, LAZYGIT_COMMAND);
     },
   });
 
@@ -98,12 +103,7 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify("vim requires interactive mode", "error");
         return;
       }
-      const trimmedArgs = args.trim();
-      await runShellCommand(
-        ctx,
-        ctx.cwd,
-        trimmedArgs ? `${VIM_COMMAND} ${trimmedArgs}` : VIM_COMMAND,
-      );
+      await runTerminalApp(ctx, ctx.cwd, preferredEditorCommand(args));
     },
   });
 }

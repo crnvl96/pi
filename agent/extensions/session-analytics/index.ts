@@ -1,5 +1,5 @@
 /**
- * /ext:session-metadata
+ * /ext:session-analytics
  *
  * Interactive TUI that analyzes ~/.pi/agent/sessions (recursively, *.jsonl) and shows
  * last 7/30/90 days of:
@@ -1325,11 +1325,7 @@ class BreakdownComponent implements Component {
       return;
     }
 
-    if (
-      matchesKey(data, Key.tab) ||
-      matchesKey(data, Key.shift("tab")) ||
-      data.toLowerCase() === "t"
-    ) {
+    if (matchesKey(data, Key.tab) || matchesKey(data, Key.shift("tab"))) {
       const order: MeasurementMode[] = ["sessions", "messages", "tokens"];
       const idx = Math.max(0, order.indexOf(this.measurement));
       const dir = matchesKey(data, Key.shift("tab")) ? -1 : 1;
@@ -1352,6 +1348,20 @@ class BreakdownComponent implements Component {
 
     if (matchesKey(data, Key.left) || data.toLowerCase() === "h") prev();
     if (matchesKey(data, Key.right) || data.toLowerCase() === "l") next();
+
+    const viewByKey: Record<string, BreakdownView> = {
+      m: "model",
+      c: "cwd",
+      d: "dow",
+      t: "tod",
+    };
+    const directView = viewByKey[data.toLowerCase()];
+    if (directView) {
+      this.view = directView;
+      this.invalidate();
+      this.tui.requestRender();
+      return;
+    }
 
     if (
       matchesKey(data, Key.up) ||
@@ -1409,7 +1419,7 @@ class BreakdownComponent implements Component {
     };
 
     const header =
-      `${bold("Session metadata")}  ${tab(7, 0)}${tab(30, 1)}${tab(90, 2)}  ` +
+      `${bold("Session analytics")}  ${tab(7, 0)}${tab(30, 1)}${tab(90, 2)}  ` +
       `${metricTab("sessions", "sessions")}${metricTab("messages", "messages")}${metricTab("tokens", "tokens")}  ` +
       `${viewTab("model", "models")}${viewTab("cwd", "directories")}${viewTab("dow", "days of the week")}${viewTab("tod", "time of day")}`;
 
@@ -1492,7 +1502,7 @@ class BreakdownComponent implements Component {
     const lines: string[] = [];
     lines.push(truncateToWidth(header, width));
     lines.push(
-      truncateToWidth(dim("left/right range | up/down view | tab metric | q close"), width),
+      truncateToWidth(dim("left/right range | m/c/d/t view | tab metric | q close"), width),
     );
     lines.push("");
     lines.push(truncateToWidth(summary, width));
@@ -1562,96 +1572,103 @@ class BreakdownComponent implements Component {
   }
 }
 
+async function openSessionAnalytics(pi: ExtensionAPI, ctx: ExtensionContext) {
+  if (!ctx.hasUI) {
+    const data = await computeBreakdown(undefined);
+    const range = data.ranges.get(30)!;
+    pi.sendMessage(
+      {
+        customType: "session-analytics",
+        content: `Session analytics (non-interactive)\n${rangeSummary(range, 30, "tokens")}`,
+        display: true,
+      },
+      { triggerTurn: false },
+    );
+    return;
+  }
+
+  let aborted = false;
+  const data = await ctx.ui.custom<BreakdownData | null>((tui, theme, _kb, done) => {
+    const baseMessage = "Analyzing sessions (last 90 days)…";
+    const loader = new BorderedLoader(tui, theme, baseMessage);
+
+    const startedAt = Date.now();
+    const progress: BreakdownProgressState = {
+      phase: "scan",
+      foundFiles: 0,
+      parsedFiles: 0,
+      totalFiles: 0,
+      currentFile: undefined,
+    };
+
+    const renderMessage = (): string => {
+      const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
+      if (progress.phase === "scan") {
+        return `${baseMessage}  scanning (${formatCount(progress.foundFiles)} files) · ${elapsed}s`;
+      }
+      if (progress.phase === "parse") {
+        return `${baseMessage}  parsing (${formatCount(progress.parsedFiles)}/${formatCount(progress.totalFiles)}) · ${elapsed}s`;
+      }
+      return `${baseMessage}  finalizing · ${elapsed}s`;
+    };
+
+    let intervalId: NodeJS.Timeout | null = null;
+    const stopTicker = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    // Update every 0.5s so long-running scans show some visible progress.
+    setBorderedLoaderMessage(loader, renderMessage());
+    intervalId = setInterval(() => {
+      setBorderedLoaderMessage(loader, renderMessage());
+    }, 500);
+
+    loader.onAbort = () => {
+      aborted = true;
+      stopTicker();
+      done(null);
+    };
+
+    computeBreakdown(loader.signal, (update) => Object.assign(progress, update))
+      .then((d) => {
+        stopTicker();
+        if (!aborted) done(d);
+      })
+      .catch((err) => {
+        stopTicker();
+        console.error("session-analytics: failed to analyze sessions", err);
+        if (!aborted) done(null);
+      });
+
+    return loader;
+  });
+
+  if (!data) {
+    ctx.ui.notify(aborted ? "Cancelled" : "Failed to analyze sessions", aborted ? "info" : "error");
+    return;
+  }
+
+  await ctx.ui.custom<void>((tui, _theme, _kb, done) => {
+    return new BreakdownComponent(data, tui, done);
+  });
+}
+
 export default function (pi: ExtensionAPI) {
-  pi.registerCommand("ext:session-metadata", {
+  pi.registerCommand("ext:session-analytics", {
     description:
       "Interactive breakdown of last 7/30/90 days of ~/.pi session usage by model, directory, day of week, and time of day",
     handler: async (_args, ctx: ExtensionContext) => {
-      if (!ctx.hasUI) {
-        // Non-interactive fallback: just notify.
-        const data = await computeBreakdown(undefined);
-        const range = data.ranges.get(30)!;
-        pi.sendMessage(
-          {
-            customType: "session-metadata",
-            content: `Session metadata (non-interactive)\n${rangeSummary(range, 30, "tokens")}`,
-            display: true,
-          },
-          { triggerTurn: false },
-        );
-        return;
-      }
+      await openSessionAnalytics(pi, ctx);
+    },
+  });
 
-      let aborted = false;
-      const data = await ctx.ui.custom<BreakdownData | null>((tui, theme, _kb, done) => {
-        const baseMessage = "Analyzing sessions (last 90 days)…";
-        const loader = new BorderedLoader(tui, theme, baseMessage);
-
-        const startedAt = Date.now();
-        const progress: BreakdownProgressState = {
-          phase: "scan",
-          foundFiles: 0,
-          parsedFiles: 0,
-          totalFiles: 0,
-          currentFile: undefined,
-        };
-
-        const renderMessage = (): string => {
-          const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
-          if (progress.phase === "scan") {
-            return `${baseMessage}  scanning (${formatCount(progress.foundFiles)} files) · ${elapsed}s`;
-          }
-          if (progress.phase === "parse") {
-            return `${baseMessage}  parsing (${formatCount(progress.parsedFiles)}/${formatCount(progress.totalFiles)}) · ${elapsed}s`;
-          }
-          return `${baseMessage}  finalizing · ${elapsed}s`;
-        };
-
-        let intervalId: NodeJS.Timeout | null = null;
-        const stopTicker = () => {
-          if (intervalId) {
-            clearInterval(intervalId);
-            intervalId = null;
-          }
-        };
-
-        // Update every 0.5s so long-running scans show some visible progress.
-        setBorderedLoaderMessage(loader, renderMessage());
-        intervalId = setInterval(() => {
-          setBorderedLoaderMessage(loader, renderMessage());
-        }, 500);
-
-        loader.onAbort = () => {
-          aborted = true;
-          stopTicker();
-          done(null);
-        };
-
-        computeBreakdown(loader.signal, (update) => Object.assign(progress, update))
-          .then((d) => {
-            stopTicker();
-            if (!aborted) done(d);
-          })
-          .catch((err) => {
-            stopTicker();
-            console.error("session-metadata: failed to analyze sessions", err);
-            if (!aborted) done(null);
-          });
-
-        return loader;
-      });
-
-      if (!data) {
-        ctx.ui.notify(
-          aborted ? "Cancelled" : "Failed to analyze sessions",
-          aborted ? "info" : "error",
-        );
-        return;
-      }
-
-      await ctx.ui.custom<void>((tui, _theme, _kb, done) => {
-        return new BreakdownComponent(data, tui, done);
-      });
+  pi.registerCommand("ext:session-metadata", {
+    description: "Alias for /ext:session-analytics",
+    handler: async (_args, ctx: ExtensionContext) => {
+      await openSessionAnalytics(pi, ctx);
     },
   });
 }

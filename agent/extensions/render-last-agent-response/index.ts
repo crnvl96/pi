@@ -17,7 +17,7 @@ import {
 const CHROME_LINES = 4;
 const TAB_REPLACEMENT = "    ";
 
-class LastResponseOverlay implements Component {
+class LastAgentResponseOverlay implements Component {
   private readonly markdown: Markdown;
   private scroll = 0;
   private cachedWidth?: number;
@@ -73,7 +73,7 @@ class LastResponseOverlay implements Component {
     const maxScroll = Math.max(0, markdownLines.length - bodyHeight);
     this.scroll = Math.max(0, Math.min(maxScroll, this.scroll));
 
-    const title = this.theme.fg("accent", this.theme.bold("Last assistant response"));
+    const title = this.theme.fg("accent", this.theme.bold("Last agent response"));
     const help = this.theme.fg("dim", "up/down line | d/u half page | g/G top/bottom | esc/q quit");
     const position = this.theme.fg(
       "dim",
@@ -123,7 +123,7 @@ class LastResponseOverlay implements Component {
   }
 }
 
-function findLastAssistantResponse(ctx: ExtensionCommandContext): string | undefined {
+function findLastAgentResponse(ctx: ExtensionCommandContext): string | undefined {
   const branch = ctx.sessionManager.getBranch();
   for (let i = branch.length - 1; i >= 0; i--) {
     const entry = branch[i] as any;
@@ -158,12 +158,11 @@ function fit(text: string, width: number): string {
 
 export default function (pi: ExtensionAPI) {
   pi.registerCommand("ext:render-last-agent-response", {
-    description:
-      "Render the last assistant response as markdown in a full-screen scrollable overlay",
+    description: "Render the last agent response as markdown in a full-screen scrollable overlay",
     handler: async (_args: string, ctx: ExtensionCommandContext) => {
-      const response = findLastAssistantResponse(ctx);
+      const response = findLastAgentResponse(ctx);
       if (!response) {
-        ctx.ui.notify("No assistant response found", "warning");
+        ctx.ui.notify("No agent response found", "warning");
         return;
       }
 
@@ -177,7 +176,7 @@ export default function (pi: ExtensionAPI) {
 
       await ctx.ui.custom<void>(
         (tui, theme, _keybindings, done) =>
-          new LastResponseOverlay(response, tui, theme, () => done(undefined)),
+          new LastAgentResponseOverlay(response, tui, theme, () => done(undefined)),
         {
           overlay: true,
           overlayOptions: {
