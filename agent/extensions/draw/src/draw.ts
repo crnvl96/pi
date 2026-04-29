@@ -14,114 +14,71 @@ declare global {
 }
 
 const token = window.__PI_DRAW_TOKEN__;
+const rootElement = document.getElementById("root");
+const submitElement = document.getElementById("submit");
+
 if (!token) throw new Error("Missing pi draw token.");
-const TOKEN: string = token;
+if (!rootElement) throw new Error("Missing draw root.");
+if (!(submitElement instanceof HTMLButtonElement)) throw new Error("Missing submit button.");
 
-const submitButtonElement = document.getElementById("submit");
-if (!(submitButtonElement instanceof HTMLButtonElement)) throw new Error("Missing submit button.");
-const submitButton: HTMLButtonElement = submitButtonElement;
-
-const root = document.getElementById("root");
-if (!root) throw new Error("Missing draw root.");
-
-let editor: Editor | null = null;
-let submitting = false;
-let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
-
-function flashButton(className: "did-submit" | "did-error") {
-  submitButton.classList.remove("did-submit", "did-error");
-  if (feedbackTimer) clearTimeout(feedbackTimer);
-  submitButton.classList.add(className);
-  feedbackTimer = setTimeout(() => submitButton.classList.remove(className), 650);
-}
-
-function updateButton() {
-  submitButton.disabled = !editor || submitting;
-  submitButton.classList.toggle("is-submitting", submitting);
-  submitButton.setAttribute("aria-busy", submitting ? "true" : "false");
-}
+const TOKEN = token;
+const root = rootElement;
+const submitButton = submitElement;
+let editor: Editor | undefined;
 
 async function submitDrawing() {
-  if (!editor || submitting) return;
+  if (!editor) return;
 
-  const ids = Array.from(editor.getCurrentPageShapeIds());
-  if (ids.length === 0) {
-    flashButton("did-error");
-    return;
-  }
+  const ids = [...editor.getCurrentPageShapeIds()];
+  if (ids.length === 0) return;
 
-  submitting = true;
-  updateButton();
+  submitButton.disabled = true;
+  submitButton.textContent = "Submitting...";
 
   try {
-    if (editor.fonts?.loadRequiredFontsForCurrentPage) {
-      await editor.fonts.loadRequiredFontsForCurrentPage(editor.options.maxFontsToLoadBeforeRender);
-    }
-
-    const result = await editor.toImage(ids, {
+    await editor.fonts?.loadRequiredFontsForCurrentPage?.(
+      editor.options.maxFontsToLoadBeforeRender,
+    );
+    const image = await editor.toImage(ids, {
       format: "png",
       background: true,
       padding: 48,
       scale: 2,
       darkMode: false,
     });
-    if (!result?.blob) throw new Error("Could not render this drawing.");
 
-    const response = await fetch("/submit?token=" + encodeURIComponent(TOKEN), {
+    const response = await fetch(`/submit?token=${encodeURIComponent(TOKEN)}`, {
       method: "POST",
       headers: { "Content-Type": "image/png" },
-      body: result.blob,
+      body: image.blob,
     });
-    const data = (await response.json().catch(() => ({}))) as {
-      ok?: boolean;
-      error?: string;
-      inserted?: boolean;
-    };
-    if (!response.ok || !data.ok) {
-      throw new Error(data.error || response.statusText || "Submit failed");
-    }
+    const result = (await response.json()) as { ok?: boolean; error?: string };
+    if (!response.ok || !result.ok) throw new Error(result.error || "Submit failed");
 
-    flashButton(data.inserted ? "did-submit" : "did-error");
+    submitButton.textContent = "Submitted";
   } catch (error) {
     console.error(error);
-    flashButton("did-error");
+    submitButton.textContent = "Submit failed";
   } finally {
-    submitting = false;
-    updateButton();
+    setTimeout(() => {
+      submitButton.disabled = false;
+      submitButton.textContent = "Submit to Pi";
+    }, 900);
   }
 }
 
 submitButton.addEventListener("click", submitDrawing);
 
-const events = new EventSource("/events?token=" + encodeURIComponent(TOKEN));
-
-function notifyClosed() {
-  events.close();
-  try {
-    navigator.sendBeacon(
-      "/closed?token=" + encodeURIComponent(TOKEN),
-      new Blob([], { type: "text/plain" }),
-    );
-  } catch {
-    // Best effort only.
-  }
-}
-window.addEventListener("pagehide", notifyClosed);
-window.addEventListener("beforeunload", notifyClosed);
-
-function App() {
-  return React.createElement(Tldraw, {
-    persistenceKey: "pi-draw-canvas",
+createRoot(root).render(
+  React.createElement(Tldraw, {
     autoFocus: true,
     onMount: (mountedEditor) => {
       editor = mountedEditor;
-      updateButton();
+      submitButton.disabled = false;
       return () => {
-        editor = null;
-        updateButton();
+        editor = undefined;
+        submitButton.disabled = true;
       };
     },
-  });
-}
-
-createRoot(root).render(React.createElement(App));
+  }),
+);

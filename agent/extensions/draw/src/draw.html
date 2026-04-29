@@ -4,18 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>pi draw</title>
-    <link rel="stylesheet" href="/assets/draw.css?v={{assetVersion}}" />
-    <link rel="modulepreload" href="/assets/draw.js?v={{assetVersion}}" />
+    <link rel="stylesheet" href="/assets/draw.css" />
   </head>
   <body>
     <div id="root"></div>
-    <div class="draw-submit-wrap">
-      <button id="submit" class="draw-button" type="button" disabled>Submit to Pi</button>
-    </div>
+    <button id="submit" type="button" disabled>Submit to Pi</button>
 
     <script>
       window.__PI_DRAW_TOKEN__ = {{tokenJson}};
     </script>
-    <script type="module" src="/assets/draw.js?v={{assetVersion}}"></script>
+    <script type="module" src="/assets/draw.js"></script>
   </body>
 </html>
