@@ -5,6 +5,13 @@ import { readFile, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  appendSeparated,
+  getBrowserOpenCommand,
+  getErrorMessage,
+  isPng,
+  toHtmlSafeJson,
+} from "./utils.ts";
 
 const HOST = "127.0.0.1";
 const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
@@ -37,16 +44,8 @@ async function readBody(req: IncomingMessage) {
   return Buffer.concat(chunks);
 }
 
-function isPng(buffer: Buffer) {
-  return buffer
-    .subarray(0, 8)
-    .equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-}
-
 async function openBrowser(url: string) {
-  const command =
-    process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
-  const args = process.platform === "win32" ? ["/c", "start", "", url] : [url];
+  const { command, args } = getBrowserOpenCommand(process.platform, url);
 
   await new Promise<void>((resolve, reject) => {
     const child = spawn(command, args, { detached: true, stdio: "ignore" });
@@ -62,7 +61,7 @@ function addScreenshotToPrompt(path: string) {
   if (!lastCtx?.hasUI) return false;
 
   const text = lastCtx.ui.getEditorText();
-  lastCtx.ui.setEditorText(`${text}${text && !/\s$/.test(text) ? " " : ""}@${path}`);
+  lastCtx.ui.setEditorText(appendSeparated(text, `@${path}`));
   lastCtx.ui.notify(`Added drawing to prompt: ${path}`, "info");
   return true;
 }
@@ -102,7 +101,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
       "text/html; charset=utf-8",
       (await readFile(join(EXTENSION_DIR, "src", "draw.html"), "utf8")).replace(
         "{{tokenJson}}",
-        JSON.stringify(token).replace(/</g, "\\u003c"),
+        toHtmlSafeJson(token),
       ),
     );
     return;
@@ -129,7 +128,7 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse) {
         "application/json; charset=utf-8",
         JSON.stringify({
           ok: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: getErrorMessage(error),
         }),
       );
     }
@@ -146,12 +145,7 @@ async function ensureServer() {
   server = createServer(
     (req, res) =>
       void handleRequest(req, res).catch((error) =>
-        send(
-          res,
-          500,
-          "text/plain; charset=utf-8",
-          error instanceof Error ? error.message : String(error),
-        ),
+        send(res, 500, "text/plain; charset=utf-8", getErrorMessage(error)),
       ),
   );
 
@@ -177,7 +171,7 @@ async function openCanvas(ctx: ExtensionContext) {
     await openBrowser(url);
     ctx.ui.notify("Drawing canvas opened. Click Submit to add a screenshot to the prompt.", "info");
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     ctx.ui.notify(
       url
         ? `Could not open browser: ${message}. Open ${url} manually.`
