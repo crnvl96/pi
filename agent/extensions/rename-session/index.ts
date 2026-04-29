@@ -33,12 +33,14 @@ export default function (pi: ExtensionAPI) {
         currentName ? `Rename session (current: ${currentName})` : "Name this session",
         currentName ?? "Session name",
       );
+
       if (enteredName === undefined) {
         ctx.ui.notify("Session rename cancelled", "info");
         return;
       }
 
       const name = enteredName.trim();
+
       if (!name) {
         ctx.ui.notify("Session name unchanged", "warning");
         return;

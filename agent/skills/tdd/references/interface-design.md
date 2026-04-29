@@ -26,5 +26,5 @@ function applyDiscount(cart): void {
 
 ## 3. Aim for a Small surface area
 
-- Fewer methods = fewer tests needed
-- Fewer params = simpler test setup
+- Fewer methods needs fewer tests
+- Fewer params represents a simpler test setup

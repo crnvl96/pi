@@ -1,5 +1,5 @@
 ---
-name: trace-a-chart
+name: plan
 description: Grilling session that challenges your plan against the existing domain model, sharpens terminology, and updates documentation inline as decisions crystallise.
 disable-model-invocation: true
 ---
@@ -8,6 +8,7 @@ disable-model-invocation: true
 - Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
 - Ask the questions one at a time, waiting for feedback on each question before continuing.
 - If a question can be answered by exploring the codebase, explore the codebase instead.
+- When shared understanding is reached don't implement anythig. Present it to the user, declare the grilling session has ended, and ask for the next steps.
 
 ## 1. Domain awareness
 
@@ -51,19 +52,19 @@ disable-model-invocation: true
 ## 6. Update CONTEXT.md inline
 
 - When a term is resolved, update `CONTEXT.md` right there. Don't batch these up — capture them as they happen.
-- Use the format in [CONTEXT-FORMAT.md](./CONTEXT-FORMAT.md).
+- Use the format in [context-format.md](./references/context-format.md).
 - Don't couple `CONTEXT.md` to implementation details.
 - Only include terms that are meaningful to domain experts.
 
-### Offer ADRs sparingly
+## 7. Offer ADRs sparingly
 
 Only offer to create an ADR when all three are true:
 
-1. **Hard to reverse** — the cost of changing your mind later is meaningful
-2. **Surprising without context** — a future reader will wonder "why did they do it this way?"
-3. **The result of a real trade-off** — there were genuine alternatives and you picked one for specific reasons
+1. Hard to reverse. The cost of changing your mind later is meaningful
+2. Surprising without context. A future reader will wonder "why did they do it this way?"
+3. The result of a real trade-off. There were genuine alternatives and you picked one for specific reasons
 
-- If any of the three is missing, skip the ADR. Use the format in [ADR-FORMAT.md](./ADR-FORMAT.md).
+- If any of the three is missing, skip the ADR. Use the format in [adr-format.md](./references/adr-format.md).
 - If a decision is easy to reverse, skip it — you'll just reverse it.
 - If it's not surprising, nobody will wonder why.
 - If there was no real alternative, there's nothing to record beyond "we did the obvious thing."

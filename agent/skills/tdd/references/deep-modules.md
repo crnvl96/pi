@@ -6,11 +6,11 @@ A Deep module has a small interface with lots of implementation
 
 ```
 ┌─────────────────────┐
-│   Small Interface   │  ← Few methods, simple params
+│   Small Interface   │  <- Few methods, simple params
 ├─────────────────────┤
 │                     │
 │                     │
-│  Deep Implementation│  ← Complex logic hidden
+│  Deep Implementation│  <- Complex logic hidden
 │                     │
 │                     │
 └─────────────────────┘
@@ -22,9 +22,9 @@ A Shallow module has large interface with little implementation
 
 ```
 ┌─────────────────────────────────┐
-│       Large Interface           │  ← Many methods, complex params
+│       Large Interface           │  <- Many methods, complex params
 ├─────────────────────────────────┤
-│  Thin Implementation            │  ← Just passes through
+│  Thin Implementation            │  <- Just passes through
 └─────────────────────────────────┘
 ```
 
