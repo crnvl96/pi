@@ -4,8 +4,6 @@ description: Edit and improve articles by restructuring sections, improving clar
 disable-model-invocation: true
 ---
 
-# Edit Article
-
 ## 1. Divide into sections
 
 - First, divide the article into sections based on its headings.

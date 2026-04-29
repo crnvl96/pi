@@ -1,8 +1,8 @@
-# Good and Bad Tests
+# Tests
 
-## Good Tests
+## 1. Good tests
 
-**Integration-style**: Test through real interfaces, not mocks of internal parts.
+- Test through real interfaces, not mocks of internal parts.
 
 ```typescript
 // GOOD: Tests observable behavior
@@ -14,17 +14,15 @@ test("user can checkout with valid cart", async () => {
 });
 ```
 
-Characteristics:
-
 - Tests behavior users/callers care about
 - Uses public API only
 - Survives internal refactors
 - Describes WHAT, not HOW
 - One logical assertion per test
 
-## Bad Tests
+## 2. Bad tests
 
-**Implementation-detail tests**: Coupled to internal structure.
+- Coupled to internal structure.
 
 ```typescript
 // BAD: Tests implementation details
@@ -35,14 +33,14 @@ test("checkout calls paymentService.process", async () => {
 });
 ```
 
-Red flags:
-
 - Mocking internal collaborators
 - Testing private methods
 - Asserting on call counts/order
 - Test breaks when refactoring without behavior change
 - Test name describes HOW not WHAT
 - Verifying through external means instead of interface
+
+## 3. Two versions of the same test
 
 ```typescript
 // BAD: Bypasses interface to verify

@@ -1,8 +1,8 @@
 # Deep Modules
 
-From "A Philosophy of Software Design":
+## 1. Prefer deep modules
 
-**Deep module** = small interface + lots of implementation
+A Deep module has a small interface with lots of implementation
 
 ```
 ┌─────────────────────┐
@@ -16,7 +16,9 @@ From "A Philosophy of Software Design":
 └─────────────────────┘
 ```
 
-**Shallow module** = large interface + little implementation (avoid)
+## 2. Avoid shallow modules
+
+A Shallow module has large interface with little implementation
 
 ```
 ┌─────────────────────────────────┐
