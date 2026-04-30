@@ -52,15 +52,19 @@ export default function tmuxExtension(pi: ExtensionAPI) {
       const task = args.trim();
 
       if (!task) {
-        ctx.ui.notify(
-          "Usage: /tmux <task>\nExample: /tmux spawn a tmux session named repl and use it as a Python REPL",
-          "warning",
-        );
+        if (ctx.hasUI) {
+          ctx.ui.notify(
+            "Usage: /tmux <task>\nExample: /tmux spawn a tmux session named repl and use it as a Python REPL",
+            "warning",
+          );
+        }
         return;
       }
 
       if (!ctx.isIdle()) {
-        ctx.ui.notify("Agent is busy. Retry /tmux when the current turn is finished.", "warning");
+        if (ctx.hasUI) {
+          ctx.ui.notify("Agent is busy. Retry /tmux when the current turn is finished.", "warning");
+        }
         return;
       }
 
