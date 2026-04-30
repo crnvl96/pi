@@ -12,8 +12,10 @@ description: Turn the current conversation context into a PRD. Use when user wan
 - Sketch out the major modules you will need to build or modify to complete the implementation.
 - Actively look for opportunities to extract deep modules that can be tested in isolation. A deep module (as opposed to a shallow module) is one which encapsulates a lot of functionality in a simple, testable interface which rarely changes.
 - Check with the user that these modules match their expectations. Check with the user which modules they want tests written for.
-- Write the PRD using the template below.
-- Present it to the user and ask for the next steps.
+- Draft the PRD using the template below.
+- Present the draft and ask the user for feedback.
+- Iterate until the user approves the PRD.
+- After approval, ask for a location to save the PRD.
 
 ## 2. Template
 
@@ -29,20 +31,20 @@ description: Turn the current conversation context into a PRD. Use when user wan
 ## User stories
 
 {
-    A LONG, numbered list of user stories. Each user story should be in the format of:
-    1. As an <actor>, I want a <feature>, so that <benefit>
+A LONG, numbered list of user stories. Each user story should be in the format of: 1. As an <actor>, I want a <feature>, so that <benefit>
 
     <user-story-example>
     1. As a mobile bank customer, I want to see balance on my accounts, so that I can make better informed decisions about my spending
     </user-story-example>
 
     This list of user stories should be extremely extensive and cover all aspects of the feature.
+
 }
 
 ## Implementation decisions
 
 {
-    A list of implementation decisions that were made. This can include:
+A list of implementation decisions that were made. This can include:
 
     - The modules that will be built/modified
     - The interfaces of those modules that will be modified
@@ -53,16 +55,18 @@ description: Turn the current conversation context into a PRD. Use when user wan
     - Specific interactions
 
     Include specific file paths and code snippets.
+
 }
 
 ## Testing Decisions
 
 {
-    A list of testing decisions that were made. Include:
+A list of testing decisions that were made. Include:
 
     - A description of what makes a good test (only test external behavior, not implementation details)
     - Which modules will be tested
     - Prior art for the tests (i.e. similar types of tests in the codebase)
+
 }
 
 ## Out of Scope

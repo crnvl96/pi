@@ -9,7 +9,7 @@ Work from whatever is already in the conversation context AND a PRD file referen
 
 ## 2. Explore the codebase
 
-- If you have not already explored the codebase, do so to understand the current state of the code. 
+- If you have not already explored the codebase, do so to understand the current state of the code.
 - Use the project's domain glossary vocabulary, and respect any ADRs in the area you're touching.
 
 ## 3. Draft vertical slices
@@ -23,29 +23,34 @@ Work from whatever is already in the conversation context AND a PRD file referen
 
 ## 4. Present to the user
 
-Present the proposed breakdown as a numbered list. For each slice, show:
+Draft the proposed breakdown as a numbered list. For each slice, show:
 
 - Title: short descriptive name and order in the sequence.
 - User stories covered: which user stories this addresses.
 - Subtasks: Checkbox list of sequantial subtasks that when fully implemented cover that slice end-to-end.
 
-## 5. Enhance the PRD
+## 5. Iterate
 
-- Update the referenced PRD file using the edit tool, appending the defined slices
+- Ask the user for feedback about the breakdown.
+- Iterate until the user approves the breakdown.
+
+## 6. Enhance the PRD
+
+- After approval, update the referenced PRD file using the edit tool, appending the defined slices
 - Create the followind header and add all slices under it.
 
 ```md
 {preceding elements of the PRD}
 
-### Slices
+## Slices
 
 {Defined slices for the PRD}
 ```
 
-## 6. Slice template
+## 7. Slice template
 
 ```md
-### {slice title} 
+### {slice title}
 
 {A concise description of this vertical slice. Describe the end-to-end behavior, not layer-by-layer implementation.}
 
@@ -53,7 +58,3 @@ Present the proposed breakdown as a numbered list. For each slice, show:
 
 {The sequential subtasks list that together implement this slice end-to-end}
 ```
-
-
-
-

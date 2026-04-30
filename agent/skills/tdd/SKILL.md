@@ -3,7 +3,16 @@ name: tdd
 description: Test-driven development with red-green-refactor loop. Use when user wants to build features or fix bugs using TDD, mentions "red-green-refactor", wants integration tests, or asks for test-first development.
 ---
 
-## 1. Philosophy
+## 1. Following the PRD
+
+- The user will reference a PRD containing details about the implementation.
+- Use the User Stories and the Slices as your main guidance throughout the implementation.
+- Inspect the codebase as needed to confirm and enrich information.
+- Loop over the slices, implementing exclusively one at a time, end-to-end.
+- After successfully completing each checkbox mark it as concluded in the PRD.
+- At the end of the loop, perform a final pass in the PRD file to ensure all slices and user stories are covered.
+
+## 2. Philosophy
 
 - Tests should verify behavior through public interfaces, not implementation details. Code can change entirely; tests shouldn't.
 - Good tests are integration-style: they exercise real code paths through public APIs. They describe _what_ the system does, not _how_ it does it.
@@ -15,7 +24,7 @@ description: Test-driven development with red-green-refactor loop. Use when user
 - See [tests.md](./references/tests.md) for examples
 - See [mocking.md](./references/mocking.md) for mocking guidelines.
 
-## 2. Avoid horizontal slices
+## 3. Avoid horizontal slices
 
 - DO NOT write all tests first, then all implementation. This is "horizontal slicing" - treating RED as "write all tests" and GREEN as "write all code."
 - Correct approach: Vertical slices via tracer bullets. One test -> one implementation -> repeat.
@@ -33,7 +42,7 @@ RIGHT (vertical):
   ...
 ```
 
-## 3. Planning
+## 4. Planning
 
 - When exploring the codebase, use the project's domain glossary so that test names and interface vocabulary match the project's language, and respect ADRs in the area you're touching.
 
@@ -49,7 +58,7 @@ Before writing any code:
 - You can't test everything. Confirm with the user exactly which behaviors matter most.
 - Focus testing effort on critical paths and complex logic, not every possible edge case.
 
-## 2. Tracer bullet
+## 5. Tracer bullet
 
 - Write ONE test that confirms ONE thing about the system:
 
@@ -58,7 +67,7 @@ RED:   Write test for first behavior -> test fails
 GREEN: Write minimal code to pass -> test passes
 ```
 
-## 3. Incremental loop
+## 6. Incremental loop
 
 For each remaining behavior:
 
@@ -80,7 +89,7 @@ Checklist Per Cycle:
 - Code is minimal for this test
 - No speculative features added
 
-### 4. Refactor
+### 7. Refactor
 
 - After all tests pass, look for [refactor candidates](./references/refactoring.md):
 - Never refactor while RED. Get to GREEN first.
