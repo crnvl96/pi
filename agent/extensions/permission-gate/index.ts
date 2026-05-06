@@ -1,12 +1,6 @@
-import {
-  isToolCallEventType,
-  type ExtensionAPI,
-  type ToolCallEventResult,
-} from "@mariozechner/pi-coding-agent";
+import { isToolCallEventType, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-type PermissionGateResult = ToolCallEventResult | undefined;
-
-const PERMISSION_GATE_BASH_PATTERNS: readonly RegExp[] = [
+const PERMISSION_GATE_BASH_PATTERNS = [
   // git reset --hard
   /(?:^|[;&|\n]\s*)\s*git\s+reset\b(?=[^;&|\n]*--hard\b)/i,
   // reset --hard
@@ -58,26 +52,26 @@ const PERMISSION_GATE_BASH_PATTERNS: readonly RegExp[] = [
 ];
 
 export default function PermissionGate(pi: ExtensionAPI): void {
-  pi.on("tool_call", async (event, ctx): Promise<PermissionGateResult> => {
+  pi.on("tool_call", async (event, ctx) => {
     if (!isToolCallEventType("bash", event)) return;
 
-    const command: string = String(event.input.command ?? "");
-    const match: RegExp | undefined = PERMISSION_GATE_BASH_PATTERNS.find((pattern) =>
-      pattern.test(command),
-    );
+    const command = String(event.input.command ?? "");
+    const match = PERMISSION_GATE_BASH_PATTERNS.find((pattern) => pattern.test(command));
 
     if (!match) return;
 
     if (!ctx.hasUI)
       return {
         block: true,
-        reason: `Permission gate blocked command (no UI for confirmation): ${match}`,
+        reason: `Blocked by permission gate: ${match}`,
       };
 
-    const header: string = "Permission gate";
-    const msg: string = `Potentially dangerous command:\n\n${command}\n\nDetected: ${match}\n\nAllow execution?`;
+    const confirmed = await ctx.ui.confirm(
+      "Permission gate",
+      `Potentially dangerous command:\n\n${command}\n\nDetected: ${match}\n\nAllow execution?`,
+    );
 
-    if (!(await ctx.ui.confirm(header, msg)))
+    if (!confirmed)
       return {
         block: true,
         reason: `Blocked by permission gate: ${match}`,

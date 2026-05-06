@@ -4,7 +4,7 @@
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "xhigh",
-  "hideThinkingBlock": false,
+  "hideThinkingBlock": true,
   "treeFilterMode": "no-tools",
   "shellCommandPrefix": "shopt -s expand_aliases\neval \"$(grep '^alias ' ~/.bashrc)\"",
   "enabledModels": [
