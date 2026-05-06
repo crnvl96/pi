@@ -32,3 +32,12 @@ export interface FetchOptions {
   prompt?: string;
   signal?: AbortSignal;
 }
+
+export interface StoredMetadataDetails {
+  responseId?: string;
+  truncated?: boolean;
+  fullLength?: number;
+  byteSize?: number;
+  cacheBytes?: number;
+  cacheMaxBytes?: number;
+}

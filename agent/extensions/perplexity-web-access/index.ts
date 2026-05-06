@@ -9,6 +9,7 @@ import {
   type SearchResult,
   type FetchOptions,
   type SearchOptions,
+  type StoredMetadataDetails,
 } from "./types.js";
 import { fetchUrlWithPerplexity, searchWithPerplexity } from "./perplexity.js";
 
@@ -16,15 +17,6 @@ const CONCURRENCY_LIMIT = 3;
 const MAX_INLINE_CONTENT = 30_000;
 const MAX_STORED_BYTES = 10 * 1024 * 1024;
 const CACHE_STATUS_ID = "perplexity-cache";
-
-interface StoredMetadataDetails {
-  responseId?: string;
-  truncated?: boolean;
-  fullLength?: number;
-  byteSize?: number;
-  cacheBytes?: number;
-  cacheMaxBytes?: number;
-}
 
 interface PerplexityWebSearchDetails extends StoredMetadataDetails {
   queries?: string[];
