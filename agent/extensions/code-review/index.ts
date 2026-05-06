@@ -45,6 +45,32 @@ import {
 import path from "node:path";
 import { promises as fs } from "node:fs";
 
+// Shared types
+type ReviewSessionState = {
+  active: boolean;
+  originId?: string;
+};
+
+type ReviewSettingsState = {
+  customInstructions?: string | undefined;
+};
+
+// Review target types (matching Codex's approach)
+type ReviewTarget =
+  | { type: "uncommitted" }
+  | { type: "baseBranch"; branch: string }
+  | { type: "commit"; sha: string; title?: string | undefined }
+  | { type: "pullRequest"; prNumber: number; baseBranch: string; title: string }
+  | { type: "folder"; paths: string[] };
+
+type EndReviewAction = "returnOnly" | "returnAndFix" | "returnAndSummarize";
+type EndReviewActionResult = "ok" | "cancelled" | "error";
+type EndReviewActionOptions = {
+  showSummaryLoader?: boolean;
+  notifySuccess?: boolean;
+};
+
+// Module state
 // State to track fresh session review (where we branched from).
 // Module-level state means only one review can be active at a time.
 // This is intentional - the UI and /end-review command assume a single active review.
@@ -60,15 +86,21 @@ const GH_SETUP_INSTRUCTIONS =
 const PR_CHECKOUT_BLOCKED_BY_PENDING_CHANGES_MESSAGE =
   "Cannot checkout PR: you have uncommitted changes. Please commit or stash them first.";
 
-type ReviewSessionState = {
-  active: boolean;
-  originId?: string;
-};
+// Review preset options for the selector (keep this order stable)
+const REVIEW_PRESETS = [
+  { value: "uncommitted", label: "Review uncommitted changes", description: "" },
+  { value: "baseBranch", label: "Review against a base branch", description: "(local)" },
+  { value: "commit", label: "Review a commit", description: "" },
+  { value: "pullRequest", label: "Review a pull request", description: "(GitHub PR)" },
+  { value: "folder", label: "Review a folder (or more)", description: "(snapshot, not diff)" },
+] as const;
 
-type ReviewSettingsState = {
-  customInstructions?: string | undefined;
-};
+const TOGGLE_CUSTOM_INSTRUCTIONS_VALUE = "toggleCustomInstructions" as const;
+type ReviewPresetValue =
+  | (typeof REVIEW_PRESETS)[number]["value"]
+  | typeof TOGGLE_CUSTOM_INSTRUCTIONS_VALUE;
 
+// Review session state helpers
 function setReviewWidget(ctx: ExtensionContext, active: boolean) {
   if (!ctx.hasUI) return;
   if (!active) {
@@ -132,15 +164,7 @@ function applyReviewSettings(ctx: ExtensionContext) {
   reviewCustomInstructions = state.customInstructions?.trim() || undefined;
 }
 
-// Review target types (matching Codex's approach)
-type ReviewTarget =
-  | { type: "uncommitted" }
-  | { type: "baseBranch"; branch: string }
-  | { type: "commit"; sha: string; title?: string | undefined }
-  | { type: "pullRequest"; prNumber: number; baseBranch: string; title: string }
-  | { type: "folder"; paths: string[] };
-
-// Prompts (adapted from Codex)
+// Review prompts (adapted from Codex)
 const UNCOMMITTED_PROMPT =
   "Review the current code changes (staged, unstaged, and untracked files) and provide prioritized findings.";
 
@@ -271,6 +295,64 @@ Provide your findings in a clear, structured format:
 
 Output all findings the author would fix if they knew about them. If there are no qualifying findings, explicitly state the code looks good. Don't stop at the first finding - list every qualifying issue. Then append the required non-blocking callouts section.`;
 
+// Custom prompt for review summaries - focuses on preserving actionable findings
+const REVIEW_SUMMARY_PROMPT = `We are leaving a code-review branch and returning to the main coding branch.
+Create a structured handoff that can be used immediately to implement fixes.
+
+You MUST summarize the review that happened in this branch so findings can be acted on.
+Do not omit findings: include every actionable issue that was identified.
+
+Required sections (in order):
+
+## Review Scope
+- What was reviewed (files/paths, changes, and scope)
+
+## Verdict
+- "correct" or "needs attention"
+
+## Findings
+For EACH finding, include:
+- Priority tag ([P0]..[P3]) and short title
+- File location (\`path/to/file.ext:line\`)
+- Why it matters (brief)
+- What should change (brief, actionable)
+
+## Fix Queue
+1. Ordered implementation checklist (highest priority first)
+
+## Constraints & Preferences
+- Any constraints or preferences mentioned during review
+- Or "(none)"
+
+## Human Reviewer Callouts (Non-Blocking)
+Include only applicable callouts (no yes/no lines):
+- **This change adds a database migration:** <files/details>
+- **This change introduces a new dependency:** <package(s)/details>
+- **This change changes a dependency (or the lockfile):** <files/package(s)/details>
+- **This change modifies auth/permission behavior:** <what changed and where>
+- **This change introduces backwards-incompatible public schema/API/contract changes:** <what changed and where>
+- **This change includes irreversible or destructive operations:** <operation and scope>
+
+If none apply, write "- (none)".
+
+These are informational callouts for humans and are not fix items by themselves.
+
+Preserve exact file paths, function names, and error messages where available.`;
+
+const REVIEW_FIX_FINDINGS_PROMPT = `Use the latest review summary in this session and implement the review findings now.
+
+Instructions:
+1. Treat the summary's Findings/Fix Queue as a checklist.
+2. Fix in priority order: P0, P1, then P2 (include P3 if quick and safe).
+3. If a finding is invalid/already fixed/not possible right now, briefly explain why and continue.
+4. Treat "Human Reviewer Callouts (Non-Blocking)" as informational only; do not convert them into fix tasks unless there is a separate explicit finding.
+5. Follow fail-fast error handling: do not add local catch/fallback recovery unless this scope is an explicit boundary that can safely translate the failure.
+6. If you add or keep a \`try/catch\`, explain the expected failure mode and either rethrow with context or return a boundary-safe error response.
+7. JSON parsing/decoding should fail loudly by default; avoid silent fallback parsing.
+8. Run relevant tests/checks for touched code where practical.
+9. End with: fixed items, deferred/skipped items (with reasons), and verification results.`;
+
+// Project review guidelines
 async function loadProjectReviewGuidelines(cwd: string): Promise<string | null> {
   let currentDir = path.resolve(cwd);
 
@@ -301,6 +383,7 @@ async function loadProjectReviewGuidelines(cwd: string): Promise<string | null> 
   }
 }
 
+// Git helpers
 /**
  * Get the merge base between HEAD and a branch
  */
@@ -395,6 +478,40 @@ async function hasPendingChanges(pi: ExtensionAPI): Promise<boolean> {
 }
 
 /**
+ * Get the current branch name
+ */
+async function getCurrentBranch(pi: ExtensionAPI): Promise<string | null> {
+  const { stdout, code } = await pi.exec("git", ["branch", "--show-current"]);
+  if (code === 0 && stdout.trim()) {
+    return stdout.trim();
+  }
+  return null;
+}
+
+/**
+ * Get the default branch (main or master)
+ */
+async function getDefaultBranch(pi: ExtensionAPI): Promise<string> {
+  // Try to get from remote HEAD
+  const { stdout, code } = await pi.exec("git", [
+    "symbolic-ref",
+    "refs/remotes/origin/HEAD",
+    "--short",
+  ]);
+  if (code === 0 && stdout.trim()) {
+    return stdout.trim().replace("origin/", "");
+  }
+
+  // Fall back to checking if main or master exists
+  const branches = await getLocalBranches(pi);
+  if (branches.includes("main")) return "main";
+  if (branches.includes("master")) return "master";
+
+  return "main"; // Default fallback
+}
+
+// GitHub pull request helpers
+/**
  * Parse a PR reference (URL or number) and return the PR number
  */
 function parsePrReference(ref: string): number | null {
@@ -463,39 +580,7 @@ async function checkoutPr(
   return { success: true };
 }
 
-/**
- * Get the current branch name
- */
-async function getCurrentBranch(pi: ExtensionAPI): Promise<string | null> {
-  const { stdout, code } = await pi.exec("git", ["branch", "--show-current"]);
-  if (code === 0 && stdout.trim()) {
-    return stdout.trim();
-  }
-  return null;
-}
-
-/**
- * Get the default branch (main or master)
- */
-async function getDefaultBranch(pi: ExtensionAPI): Promise<string> {
-  // Try to get from remote HEAD
-  const { stdout, code } = await pi.exec("git", [
-    "symbolic-ref",
-    "refs/remotes/origin/HEAD",
-    "--short",
-  ]);
-  if (code === 0 && stdout.trim()) {
-    return stdout.trim().replace("origin/", "");
-  }
-
-  // Fall back to checking if main or master exists
-  const branches = await getLocalBranches(pi);
-  if (branches.includes("main")) return "main";
-  if (branches.includes("master")) return "master";
-
-  return "main"; // Default fallback
-}
-
+// Review prompt helpers
 /**
  * Build the review prompt based on target
  */
@@ -569,21 +654,140 @@ function getUserFacingHint(target: ReviewTarget): string {
   }
 }
 
-// Review preset options for the selector (keep this order stable)
-const REVIEW_PRESETS = [
-  { value: "uncommitted", label: "Review uncommitted changes", description: "" },
-  { value: "baseBranch", label: "Review against a base branch", description: "(local)" },
-  { value: "commit", label: "Review a commit", description: "" },
-  { value: "pullRequest", label: "Review a pull request", description: "(GitHub PR)" },
-  { value: "folder", label: "Review a folder (or more)", description: "(snapshot, not diff)" },
-] as const;
+// Command argument parsing helpers
+function parseReviewPaths(value: string): string[] {
+  return value
+    .split(/\s+/)
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
 
-const TOGGLE_CUSTOM_INSTRUCTIONS_VALUE = "toggleCustomInstructions" as const;
-type ReviewPresetValue =
-  | (typeof REVIEW_PRESETS)[number]["value"]
-  | typeof TOGGLE_CUSTOM_INSTRUCTIONS_VALUE;
+/**
+ * Parse command arguments for direct invocation
+ * Returns the target or a special marker for PR that needs async handling
+ */
+type ParsedReviewArgs = {
+  target: ReviewTarget | { type: "pr"; ref: string } | null;
+  extraInstruction?: string | undefined;
+  error?: string;
+};
 
+function tokenizeArgs(value: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: '"' | "'" | null = null;
+
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i]!;
+
+    if (quote) {
+      if (char === "\\" && i + 1 < value.length) {
+        current += value[i + 1];
+        i += 1;
+        continue;
+      }
+      if (char === quote) {
+        quote = null;
+        continue;
+      }
+      current += char;
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  return tokens;
+}
+
+function parseArgs(args: string | undefined): ParsedReviewArgs {
+  if (!args?.trim()) return { target: null };
+
+  const rawParts = tokenizeArgs(args.trim());
+  const parts: string[] = [];
+  let extraInstruction: string | undefined;
+
+  for (let i = 0; i < rawParts.length; i++) {
+    const part = rawParts[i]!;
+
+    if (part === "--extra") {
+      const next = rawParts[i + 1];
+      if (!next) {
+        return { target: null, error: "Missing value for --extra" };
+      }
+      extraInstruction = next;
+      i += 1;
+      continue;
+    }
+
+    if (part.startsWith("--extra=")) {
+      extraInstruction = part.slice("--extra=".length);
+      continue;
+    }
+
+    parts.push(part);
+  }
+
+  if (parts.length === 0) {
+    return { target: null, extraInstruction };
+  }
+
+  const subcommand = parts[0]?.toLowerCase();
+
+  switch (subcommand) {
+    case "uncommitted":
+      return { target: { type: "uncommitted" }, extraInstruction };
+
+    case "branch": {
+      const branch = parts[1];
+      if (!branch) return { target: null, extraInstruction };
+      return { target: { type: "baseBranch", branch }, extraInstruction };
+    }
+
+    case "commit": {
+      const sha = parts[1];
+      if (!sha) return { target: null, extraInstruction };
+      const title = parts.slice(2).join(" ") || undefined;
+      return { target: { type: "commit", sha, title }, extraInstruction };
+    }
+
+    case "folder": {
+      const paths = parseReviewPaths(parts.slice(1).join(" "));
+      if (paths.length === 0) return { target: null, extraInstruction };
+      return { target: { type: "folder", paths }, extraInstruction };
+    }
+
+    case "pr": {
+      const ref = parts[1];
+      if (!ref) return { target: null, extraInstruction };
+      return { target: { type: "pr", ref }, extraInstruction };
+    }
+
+    default:
+      return { target: null, extraInstruction };
+  }
+}
+
+// Extension entry point
 export default function reviewExtension(pi: ExtensionAPI) {
+  // Per-session settings helpers
   function persistReviewSettings() {
     pi.appendEntry(REVIEW_SETTINGS_TYPE, {
       customInstructions: reviewCustomInstructions,
@@ -600,6 +804,7 @@ export default function reviewExtension(pi: ExtensionAPI) {
     applyReviewState(ctx);
   }
 
+  // Pull request target resolution
   async function ensureGithubCliReady(ctx: ExtensionContext): Promise<boolean> {
     const ghVersion = await pi.exec("gh", ["--version"]);
     if (ghVersion.code !== 0) {
@@ -674,6 +879,7 @@ export default function reviewExtension(pi: ExtensionAPI) {
     };
   }
 
+  // Lifecycle event handlers
   pi.on("session_start", (_event, ctx) => {
     applyAllReviewState(ctx);
   });
@@ -682,6 +888,7 @@ export default function reviewExtension(pi: ExtensionAPI) {
     applyAllReviewState(ctx);
   });
 
+  // Review target selection UI
   /**
    * Determine the smart default review type based on git state
    */
@@ -1067,13 +1274,6 @@ export default function reviewExtension(pi: ExtensionAPI) {
     return { type: "commit", sha: result.sha, title: result.title };
   }
 
-  function parseReviewPaths(value: string): string[] {
-    return value
-      .split(/\s+/)
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
-  }
-
   /**
    * Show folder input
    */
@@ -1111,6 +1311,7 @@ export default function reviewExtension(pi: ExtensionAPI) {
     return await resolvePullRequestTarget(ctx, prRef, { skipInitialPendingChangesCheck: true });
   }
 
+  // Review execution
   /**
    * Execute the review
    */
@@ -1215,129 +1416,6 @@ export default function reviewExtension(pi: ExtensionAPI) {
   }
 
   /**
-   * Parse command arguments for direct invocation
-   * Returns the target or a special marker for PR that needs async handling
-   */
-  type ParsedReviewArgs = {
-    target: ReviewTarget | { type: "pr"; ref: string } | null;
-    extraInstruction?: string | undefined;
-    error?: string;
-  };
-
-  function tokenizeArgs(value: string): string[] {
-    const tokens: string[] = [];
-    let current = "";
-    let quote: '"' | "'" | null = null;
-
-    for (let i = 0; i < value.length; i++) {
-      const char = value[i]!;
-
-      if (quote) {
-        if (char === "\\" && i + 1 < value.length) {
-          current += value[i + 1];
-          i += 1;
-          continue;
-        }
-        if (char === quote) {
-          quote = null;
-          continue;
-        }
-        current += char;
-        continue;
-      }
-
-      if (char === '"' || char === "'") {
-        quote = char;
-        continue;
-      }
-
-      if (/\s/.test(char)) {
-        if (current.length > 0) {
-          tokens.push(current);
-          current = "";
-        }
-        continue;
-      }
-
-      current += char;
-    }
-
-    if (current.length > 0) {
-      tokens.push(current);
-    }
-
-    return tokens;
-  }
-
-  function parseArgs(args: string | undefined): ParsedReviewArgs {
-    if (!args?.trim()) return { target: null };
-
-    const rawParts = tokenizeArgs(args.trim());
-    const parts: string[] = [];
-    let extraInstruction: string | undefined;
-
-    for (let i = 0; i < rawParts.length; i++) {
-      const part = rawParts[i]!;
-
-      if (part === "--extra") {
-        const next = rawParts[i + 1];
-        if (!next) {
-          return { target: null, error: "Missing value for --extra" };
-        }
-        extraInstruction = next;
-        i += 1;
-        continue;
-      }
-
-      if (part.startsWith("--extra=")) {
-        extraInstruction = part.slice("--extra=".length);
-        continue;
-      }
-
-      parts.push(part);
-    }
-
-    if (parts.length === 0) {
-      return { target: null, extraInstruction };
-    }
-
-    const subcommand = parts[0]?.toLowerCase();
-
-    switch (subcommand) {
-      case "uncommitted":
-        return { target: { type: "uncommitted" }, extraInstruction };
-
-      case "branch": {
-        const branch = parts[1];
-        if (!branch) return { target: null, extraInstruction };
-        return { target: { type: "baseBranch", branch }, extraInstruction };
-      }
-
-      case "commit": {
-        const sha = parts[1];
-        if (!sha) return { target: null, extraInstruction };
-        const title = parts.slice(2).join(" ") || undefined;
-        return { target: { type: "commit", sha, title }, extraInstruction };
-      }
-
-      case "folder": {
-        const paths = parseReviewPaths(parts.slice(1).join(" "));
-        if (paths.length === 0) return { target: null, extraInstruction };
-        return { target: { type: "folder", paths }, extraInstruction };
-      }
-
-      case "pr": {
-        const ref = parts[1];
-        if (!ref) return { target: null, extraInstruction };
-        return { target: { type: "pr", ref }, extraInstruction };
-      }
-
-      default:
-        return { target: null, extraInstruction };
-    }
-  }
-
-  /**
    * Handle PR checkout and return a ReviewTarget (or null on failure)
    */
   async function handlePrCheckout(
@@ -1347,6 +1425,7 @@ export default function reviewExtension(pi: ExtensionAPI) {
     return await resolvePullRequestTarget(ctx, ref);
   }
 
+  // Slash command registrations
   // Register the /review command
   pi.registerCommand("review", {
     description: "Review code changes (PR, uncommitted, branch, commit, or folder)",
@@ -1440,70 +1519,7 @@ export default function reviewExtension(pi: ExtensionAPI) {
     },
   });
 
-  // Custom prompt for review summaries - focuses on preserving actionable findings
-  const REVIEW_SUMMARY_PROMPT = `We are leaving a code-review branch and returning to the main coding branch.
-Create a structured handoff that can be used immediately to implement fixes.
-
-You MUST summarize the review that happened in this branch so findings can be acted on.
-Do not omit findings: include every actionable issue that was identified.
-
-Required sections (in order):
-
-## Review Scope
-- What was reviewed (files/paths, changes, and scope)
-
-## Verdict
-- "correct" or "needs attention"
-
-## Findings
-For EACH finding, include:
-- Priority tag ([P0]..[P3]) and short title
-- File location (\`path/to/file.ext:line\`)
-- Why it matters (brief)
-- What should change (brief, actionable)
-
-## Fix Queue
-1. Ordered implementation checklist (highest priority first)
-
-## Constraints & Preferences
-- Any constraints or preferences mentioned during review
-- Or "(none)"
-
-## Human Reviewer Callouts (Non-Blocking)
-Include only applicable callouts (no yes/no lines):
-- **This change adds a database migration:** <files/details>
-- **This change introduces a new dependency:** <package(s)/details>
-- **This change changes a dependency (or the lockfile):** <files/package(s)/details>
-- **This change modifies auth/permission behavior:** <what changed and where>
-- **This change introduces backwards-incompatible public schema/API/contract changes:** <what changed and where>
-- **This change includes irreversible or destructive operations:** <operation and scope>
-
-If none apply, write "- (none)".
-
-These are informational callouts for humans and are not fix items by themselves.
-
-Preserve exact file paths, function names, and error messages where available.`;
-
-  const REVIEW_FIX_FINDINGS_PROMPT = `Use the latest review summary in this session and implement the review findings now.
-
-Instructions:
-1. Treat the summary's Findings/Fix Queue as a checklist.
-2. Fix in priority order: P0, P1, then P2 (include P3 if quick and safe).
-3. If a finding is invalid/already fixed/not possible right now, briefly explain why and continue.
-4. Treat "Human Reviewer Callouts (Non-Blocking)" as informational only; do not convert them into fix tasks unless there is a separate explicit finding.
-5. Follow fail-fast error handling: do not add local catch/fallback recovery unless this scope is an explicit boundary that can safely translate the failure.
-6. If you add or keep a \`try/catch\`, explain the expected failure mode and either rethrow with context or return a boundary-safe error response.
-7. JSON parsing/decoding should fail loudly by default; avoid silent fallback parsing.
-8. Run relevant tests/checks for touched code where practical.
-9. End with: fixed items, deferred/skipped items (with reasons), and verification results.`;
-
-  type EndReviewAction = "returnOnly" | "returnAndFix" | "returnAndSummarize";
-  type EndReviewActionResult = "ok" | "cancelled" | "error";
-  type EndReviewActionOptions = {
-    showSummaryLoader?: boolean;
-    notifySuccess?: boolean;
-  };
-
+  // End-review flow
   function getActiveReviewOrigin(ctx: ExtensionContext): string | undefined {
     if (reviewOriginId) {
       return reviewOriginId;
