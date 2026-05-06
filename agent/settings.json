@@ -3,8 +3,8 @@
   "packages": [],
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "high",
-  "hideThinkingBlock": true,
+  "defaultThinkingLevel": "xhigh",
+  "hideThinkingBlock": false,
   "treeFilterMode": "no-tools",
   "shellCommandPrefix": "shopt -s expand_aliases\neval \"$(grep '^alias ' ~/.bashrc)\"",
   "enabledModels": [
