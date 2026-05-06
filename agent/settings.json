@@ -3,9 +3,12 @@
   "packages": [],
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "medium",
+  "defaultThinkingLevel": "xhigh",
   "hideThinkingBlock": true,
   "treeFilterMode": "no-tools",
   "shellCommandPrefix": "shopt -s expand_aliases\neval \"$(grep '^alias ' ~/.bashrc)\"",
-  "enabledModels": ["openai-codex/gpt-5.5", "openai-codex/gpt-5.4-mini"]
+  "enabledModels": [
+    "openai-codex/gpt-5.5",
+    "openai-codex/gpt-5.4-mini"
+  ]
 }

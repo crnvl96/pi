@@ -1,7 +1,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { FetchOptions, FetchResponse, SearchOptions, SearchResponse, SearchResult } from "./types.js";
+import type {
+  FetchOptions,
+  FetchResponse,
+  PerplexityApiResponse,
+  SearchOptions,
+  SearchResponse,
+  SearchResult,
+  WebSearchConfig,
+} from "./types.js";
 
 const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
 const CONFIG_PATH = join(homedir(), ".pi", "web-search.json");
@@ -12,15 +20,6 @@ const RATE_LIMIT = {
 };
 
 const requestTimestamps: number[] = [];
-
-interface WebSearchConfig {
-  perplexityApiKey?: unknown;
-}
-
-interface PerplexityApiResponse {
-  choices?: Array<{ message?: { content?: string } }>;
-  citations?: unknown[];
-}
 
 let cachedConfig: WebSearchConfig | null = null;
 

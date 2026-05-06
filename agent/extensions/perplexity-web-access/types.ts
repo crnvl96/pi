@@ -1,3 +1,7 @@
+export interface WebSearchConfig {
+  perplexityApiKey?: unknown;
+}
+
 export interface SearchResult {
   title: string;
   url: string;
@@ -12,6 +16,11 @@ export interface SearchResponse {
 export interface FetchResponse {
   content: string;
   results: SearchResult[];
+}
+
+export interface PerplexityApiResponse {
+  choices?: Array<{ message?: { content?: string } }>;
+  citations?: unknown[];
 }
 
 export interface QueryResultData {
@@ -40,4 +49,23 @@ export interface StoredMetadataDetails {
   byteSize?: number;
   cacheBytes?: number;
   cacheMaxBytes?: number;
+}
+
+export interface PerplexityWebSearchDetails extends StoredMetadataDetails {
+  queries?: string[];
+  queryCount?: number;
+  successfulQueries?: number;
+  totalResults?: number;
+  error?: string;
+  phase?: string;
+  progress?: number;
+  completed?: number;
+  total?: number;
+  currentQuery?: string;
+  queryResults?: Array<{
+    query: string;
+    answer: string | null;
+    sources: Array<{ title: string; url: string }>;
+    error: string | null;
+  }>;
 }
