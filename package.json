@@ -1,0 +1,19 @@
+{
+  "name": "pi-config",
+  "type": "module",
+  "scripts": {
+    "lint": "oxlint . --no-error-on-unmatched-pattern",
+    "format": "oxfmt .oxlintrc.json .oxfmtrc.json tsconfig.json package.json \"agent/extensions/**/*.ts\" --no-error-on-unmatched-pattern",
+    "format:check": "oxfmt --check .oxlintrc.json .oxfmtrc.json tsconfig.json package.json \"agent/extensions/**/*.ts\" --no-error-on-unmatched-pattern",
+    "typecheck": "tsgo --noEmit --pretty false",
+    "check": "npm run lint && npm run format:check && npm run typecheck"
+  },
+  "dependencies": {
+    "@earendil-works/pi-coding-agent": "^0.74.0"
+  },
+  "devDependencies": {
+    "@typescript/native-preview": "^7.0.0-dev.20260507.1",
+    "oxfmt": "^0.48.0",
+    "oxlint": "^1.63.0"
+  }
+}

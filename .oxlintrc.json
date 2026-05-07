@@ -1,0 +1,11 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "env": {
+    "builtin": true,
+    "node": true
+  },
+  "categories": {
+    "correctness": "warn"
+  },
+  "ignorePatterns": ["node_modules/**", "package-lock.json"]
+}
