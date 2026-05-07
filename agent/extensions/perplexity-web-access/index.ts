@@ -730,14 +730,14 @@ function aggregateUsage(results: QueryResultData[]): UsageSummary | undefined {
 
 function buildDetails(
   results: QueryResultData[],
-  outputPath: string,
+  outputPath: string | undefined,
   truncation: TruncationResult,
 ): PerplexityWebSearchDetails {
   const successfulQueries = results.filter((r) => !r.error).length;
   const failedQueries = results.length - successfulQueries;
   const usage = aggregateUsage(results);
   return {
-    fullOutputPath: outputPath,
+    ...(outputPath ? { fullOutputPath: outputPath } : {}),
     ...(truncation.truncated ? { truncation } : {}),
     queryCount: results.length,
     successfulQueries,
@@ -752,9 +752,9 @@ export default function PerplexityWebAccess(pi: ExtensionAPI): void {
     name: "perplexity-web-search",
     label: "Perplexity Web Search",
     description:
-      `Search and synthesize current web, academic, or SEC information using Perplexity Sonar (/v1/sonar). Returns a truncated preview limited to ${DEFAULT_MAX_LINES} lines or ${formatSize(DEFAULT_MAX_BYTES)} (whichever is hit first), and saves the full Markdown output with sources to /tmp. Multiple queries run with up to 3 concurrent requests.`,
+      `Search and synthesize current web, academic, or SEC information using Perplexity Sonar (/v1/sonar). Returns the complete output when under ${DEFAULT_MAX_LINES} lines and ${formatSize(DEFAULT_MAX_BYTES)}. If either limit is exceeded, returns a truncated preview and saves the full Markdown output with sources to /tmp. Multiple queries run with up to 3 concurrent requests.`,
     promptSnippet:
-      "Use for general/current web research, news, comparisons, academic or SEC lookups, and broad facts. Prefer {queries:[...]} with 2-4 varied angles. The response includes a synthesized answer, sources, and the full Markdown output path.",
+      "Use for general/current web research, news, comparisons, academic or SEC lookups, and broad facts. Prefer {queries:[...]} with 2-4 varied angles. If the response is truncated, the full Markdown output path is included.",
     parameters: SearchParams,
 
     async execute(_toolCallId, params, signal, onUpdate) {
@@ -816,14 +816,15 @@ export default function PerplexityWebAccess(pi: ExtensionAPI): void {
       );
 
       const fullOutput = buildSearchOutput(searchResults);
-      const outputPath = await saveMarkdownOutput(fullOutput);
       const truncation = truncateHead(fullOutput, {
         maxLines: DEFAULT_MAX_LINES,
         maxBytes: DEFAULT_MAX_BYTES,
       });
 
+      let outputPath: string | undefined;
       let resultText = truncation.content;
       if (truncation.truncated) {
+        outputPath = await saveMarkdownOutput(fullOutput);
         const truncatedLines = truncation.totalLines - truncation.outputLines;
         const truncatedBytes = truncation.totalBytes - truncation.outputBytes;
 
@@ -831,8 +832,6 @@ export default function PerplexityWebAccess(pi: ExtensionAPI): void {
         resultText += ` (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`;
         resultText += ` ${truncatedLines} lines (${formatSize(truncatedBytes)}) omitted.`;
         resultText += ` Full output saved to: ${outputPath}]`;
-      } else {
-        resultText += `\n\n[Full output saved to: ${outputPath}]`;
       }
 
       return {
