@@ -1,8 +1,6 @@
 {
   "lastChangelogVersion": "0.74.0",
-  "packages": [
-    "git:github.com/earendil-works/pi-review"
-  ],
+  "packages": [],
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
   "defaultThinkingLevel": "xhigh",
