@@ -1,32 +1,16 @@
-import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
-import { join } from "node:path";
-
 export interface WebSearchConfig {
+  searchModel: string;
+  summaryModel: string;
   perplexityApiKey?: unknown;
 }
 
-const CONFIG_PATH = join(homedir(), ".pi", "web-search.json");
-
-let cachedConfig: WebSearchConfig | null = null;
+export const WEB_SEARCH_CONFIG: WebSearchConfig = {
+  searchModel: "openai-codex/gpt-5.4-mini",
+  summaryModel: "openai-codex/gpt-5.4-mini",
+};
 
 export function loadConfig(): WebSearchConfig {
-  if (cachedConfig) return cachedConfig;
-
-  if (!existsSync(CONFIG_PATH)) {
-    cachedConfig = {};
-    return cachedConfig;
-  }
-
-  const content = readFileSync(CONFIG_PATH, "utf-8");
-
-  try {
-    cachedConfig = JSON.parse(content) as WebSearchConfig;
-    return cachedConfig;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Failed to parse ${CONFIG_PATH}: ${message}`);
-  }
+  return WEB_SEARCH_CONFIG;
 }
 
 function normalizeApiKey(value: unknown): string | null {
@@ -41,9 +25,7 @@ export function getApiKey(): string {
     normalizeApiKey(process.env["PERPLEXITY_API_KEY"]) ?? normalizeApiKey(config.perplexityApiKey);
   if (!key) {
     throw new Error(
-      "Perplexity API key not found. Either:\n" +
-        `  1. Create ${CONFIG_PATH} with { "perplexityApiKey": "your-key" }\n` +
-        "  2. Set PERPLEXITY_API_KEY environment variable\n" +
+      "Perplexity API key not found. Set PERPLEXITY_API_KEY environment variable.\n" +
         "Get a key at https://perplexity.ai/settings/api",
     );
   }
