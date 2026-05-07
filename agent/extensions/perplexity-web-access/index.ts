@@ -8,7 +8,6 @@ import { StringEnum } from "@mariozechner/pi-ai";
 import { Text } from "@mariozechner/pi-tui";
 import { Type } from "typebox";
 
-// Shared data types
 export interface SearchResult {
   title: string;
   url: string;

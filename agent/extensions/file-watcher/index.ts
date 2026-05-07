@@ -5,7 +5,6 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     const triggerFile = "/tmp/trigger.md";
 
-    // Ensure trigger file exists so fs.watch doesn't fail on startup
     try {
       fs.writeFileSync(triggerFile, "", { flag: "a" });
     } catch {
