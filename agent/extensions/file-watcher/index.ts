@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
-    const triggerFile = "/tmp/trigger.md";
+    const triggerFile = "/tmp/pi-file-watcher.txt";
 
     try {
       fs.writeFileSync(triggerFile, "", { flag: "a" });
@@ -33,3 +33,4 @@ export default function (pi: ExtensionAPI) {
     }
   });
 }
+

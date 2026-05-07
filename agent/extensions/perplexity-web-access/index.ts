@@ -1,35 +1,162 @@
-import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
-import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { StringEnum } from "@mariozechner/pi-ai";
 import { Text } from "@mariozechner/pi-tui";
-import {
-  SearchParams,
-  searchWithPerplexity,
-  type SearchOptions,
-  type SearchResult,
-} from "./search.js";
-import { FetchParams, fetchUrlWithPerplexity, type FetchOptions } from "./fetch.js";
-import { CodeSearchParams } from "./code-search.js";
-import { GetContentParams } from "./get-content.js";
+import { randomUUID } from "node:crypto";
+import { writeFile } from "node:fs/promises";
+import { join } from "node:path";
+import { Type } from "typebox";
 
-export interface QueryResultData {
+const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
+
+interface SearchResult {
+  title: string;
+  url: string;
+}
+
+interface SearchResponse {
+  answer: string;
+  results: SearchResult[];
+}
+
+interface SearchOptions {
+  numResults?: number;
+  recencyFilter?: "day" | "week" | "month" | "year";
+  domainFilter?: string[];
+  signal?: AbortSignal;
+}
+
+interface PerplexityApiResponse {
+  choices?: Array<{ message?: { content?: string } }>;
+  citations?: unknown[];
+}
+
+const SearchParams = Type.Object({
+  query: Type.Optional(
+    Type.String({
+      description: "Single general web search query.",
+    }),
+  ),
+  queries: Type.Optional(
+    Type.Array(Type.String(), {
+      description:
+        "Multiple general web research queries searched with up to 3 concurrent requests, with synthesized answers saved to the Markdown output file. Prefer this for broad research — vary phrasing, scope, and angle across 2-4 queries. Good: ['React vs Vue performance benchmarks 2026', 'React vs Vue developer experience comparison', 'React ecosystem size vs Vue ecosystem']. Bad: ['React vs Vue', 'React vs Vue comparison', 'React vs Vue review'] (too similar, redundant results).",
+    }),
+  ),
+  numResults: Type.Optional(
+    Type.Number({ description: "Results per query (default: 5, max: 20)" }),
+  ),
+  recencyFilter: Type.Optional(
+    StringEnum(["day", "week", "month", "year"] as const, { description: "Filter by recency" }),
+  ),
+  domainFilter: Type.Optional(
+    Type.Array(Type.String(), { description: "Limit to domains (prefix with - to exclude)" }),
+  ),
+});
+
+function normalizeApiKey(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function getApiKey(): string {
+  const key = normalizeApiKey(process.env["PERPLEXITY_API_KEY"]);
+  if (!key) {
+    throw new Error(
+      "Perplexity API key not found. Set PERPLEXITY_API_KEY environment variable.\n" +
+        "Get a key at https://perplexity.ai/settings/api",
+    );
+  }
+  return key;
+}
+
+function validateDomainFilter(domains: string[]): string[] {
+  return domains.filter((d) => {
+    const domain = d.startsWith("-") ? d.slice(1) : d;
+    return /^[a-zA-Z0-9][a-zA-Z0-9-_.]*\.[a-zA-Z]{2,}$/.test(domain);
+  });
+}
+
+async function searchWithPerplexity(
+  query: string,
+  options: SearchOptions = {},
+): Promise<SearchResponse> {
+  const apiKey = getApiKey();
+  const numResults = Math.min(options.numResults ?? 5, 20);
+
+  const requestBody: Record<string, unknown> = {
+    model: "sonar",
+    messages: [{ role: "user", content: query }],
+    max_tokens: 1024,
+    return_related_questions: false,
+  };
+
+  if (options.recencyFilter) {
+    requestBody["search_recency_filter"] = options.recencyFilter;
+  }
+
+  if (options.domainFilter && options.domainFilter.length > 0) {
+    const validated = validateDomainFilter(options.domainFilter);
+    if (validated.length > 0) {
+      requestBody["search_domain_filter"] = validated;
+    }
+  }
+
+  const requestInit: RequestInit = {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(requestBody),
+  };
+  if (options.signal) requestInit.signal = options.signal;
+
+  const response = await fetch(PERPLEXITY_API_URL, requestInit);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Perplexity API error ${response.status}: ${errorText}`);
+  }
+
+  let data: PerplexityApiResponse;
+  try {
+    data = (await response.json()) as PerplexityApiResponse;
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new Error(`Perplexity API returned invalid JSON: ${message}`);
+  }
+
+  const answer = data.choices?.[0]?.message?.content || "";
+  const citations = Array.isArray(data.citations) ? data.citations : [];
+
+  const results: SearchResult[] = [];
+  for (let i = 0; i < Math.min(citations.length, numResults); i++) {
+    const citation = citations[i];
+    if (typeof citation === "string") {
+      results.push({ title: `Source ${i + 1}`, url: citation });
+    } else if (citation && typeof citation === "object") {
+      const url = "url" in citation ? citation.url : undefined;
+      if (typeof url !== "string") continue;
+      const title =
+        "title" in citation && typeof citation.title === "string"
+          ? citation.title
+          : `Source ${i + 1}`;
+      results.push({ title, url });
+    }
+  }
+
+  return { answer, results };
+}
+
+interface QueryResultData {
   query: string;
   answer: string;
   results: SearchResult[];
   error: string | null;
 }
 
-export interface StoredMetadataDetails {
-  responseId?: string;
-  truncated?: boolean;
-  fullLength?: number;
-  byteSize?: number;
-  cacheBytes?: number;
-  cacheMaxBytes?: number;
-}
-
-export interface PerplexityWebSearchDetails extends StoredMetadataDetails {
-  queries?: string[];
+interface PerplexityWebSearchDetails {
   queryCount?: number;
   successfulQueries?: number;
   totalResults?: number;
@@ -38,208 +165,11 @@ export interface PerplexityWebSearchDetails extends StoredMetadataDetails {
   progress?: number;
   completed?: number;
   total?: number;
-  currentQuery?: string;
-  queryResults?: Array<{
-    query: string;
-    answer: string | null;
-    sources: Array<{ title: string; url: string }>;
-    error: string | null;
-  }>;
+  outputPath?: string;
 }
 
-// Tool output cache and rendering constants
 const CONCURRENCY_LIMIT = 3;
-const MAX_INLINE_CONTENT = 30_000;
-const MAX_STORED_BYTES = 10 * 1024 * 1024;
-const CACHE_STATUS_ID = "perplexity-cache";
-
-interface FetchResultData {
-  url: string;
-  content: string;
-  results: SearchResult[];
-  error: string | null;
-}
-
-interface PerplexityWebFetchDetails extends StoredMetadataDetails {
-  urls?: string[];
-  urlCount?: number;
-  successful?: number;
-  totalSources?: number;
-  error?: string;
-  phase?: string;
-  progress?: number;
-  completed?: number;
-  total?: number;
-  currentUrl?: string;
-  urlResults?: Array<{
-    url: string;
-    content: string | null;
-    sources: Array<{ title: string; url: string }>;
-    error: string | null;
-  }>;
-}
-
-interface PerplexityCodeSearchDetails extends StoredMetadataDetails {
-  query?: string;
-  enhancedQuery?: string;
-  totalResults?: number;
-  error?: string;
-}
-
-interface PerplexityGetContentDetails {
-  responseId?: string;
-  type?: StoredContentType;
-  itemKind?: StoredItemKind;
-  itemCount?: number;
-  selectedIndex?: number;
-  byteSize?: number;
-  cacheBytes?: number;
-  cacheMaxBytes?: number;
-  error?: string;
-}
-
-type StoredContentType = "search" | "fetch" | "code-search";
-type StoredItemKind = "query" | "url";
-
-interface StoredContentItem {
-  label: string;
-  content: string;
-}
-
-interface StoredContentEntry {
-  responseId: string;
-  type: StoredContentType;
-  itemKind: StoredItemKind;
-  createdAt: number;
-  byteSize: number;
-  items: StoredContentItem[];
-}
-
-interface StoredContentResult {
-  responseId: string;
-  byteSize: number;
-  fullContent: string;
-}
-
-interface PreparedOutput {
-  text: string;
-  truncated: boolean;
-}
-
-const storedContent = new Map<string, StoredContentEntry>();
-let storedBytes = 0;
-let activeContext: ExtensionContext | null = null;
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  const kb = bytes / 1024;
-  if (kb < 1024) return `${kb.toFixed(1)} KB`;
-  return `${(kb / 1024).toFixed(1)} MB`;
-}
-
-function updateCacheStatus(ctx: ExtensionContext | null | undefined): void {
-  if (!ctx) return;
-  const ratio = storedBytes / MAX_STORED_BYTES;
-  const label = `Perplexity cache: ${formatBytes(storedBytes)} / ${formatBytes(MAX_STORED_BYTES)}`;
-  const color = ratio >= 0.8 ? "warning" : storedBytes > 0 ? "accent" : "dim";
-  ctx.ui.setStatus(CACHE_STATUS_ID, ctx.ui.theme.fg(color, label));
-}
-
-function clearStoredContent(ctx: ExtensionContext | null | undefined = activeContext): void {
-  storedContent.clear();
-  storedBytes = 0;
-  updateCacheStatus(ctx);
-}
-
-function joinStoredItems(items: StoredContentItem[]): string {
-  return items
-    .map((item) => item.content)
-    .join("\n\n")
-    .trim();
-}
-
-function evictStoredContentIfNeeded(): void {
-  while (storedBytes > MAX_STORED_BYTES && storedContent.size > 1) {
-    const oldestId = storedContent.keys().next().value;
-    if (typeof oldestId !== "string") return;
-
-    const oldest = storedContent.get(oldestId);
-    storedContent.delete(oldestId);
-    if (oldest) storedBytes -= oldest.byteSize;
-  }
-
-  if (storedBytes < 0) storedBytes = 0;
-}
-
-function storeFullContent(
-  type: StoredContentType,
-  itemKind: StoredItemKind,
-  items: StoredContentItem[],
-  ctx: ExtensionContext | null | undefined,
-): StoredContentResult {
-  const fullContent = joinStoredItems(items);
-  const byteSize = Buffer.byteLength(fullContent, "utf8");
-  const responseId = randomUUID();
-
-  storedContent.set(responseId, {
-    responseId,
-    type,
-    itemKind,
-    createdAt: Date.now(),
-    byteSize,
-    items,
-  });
-  storedBytes += byteSize;
-
-  evictStoredContentIfNeeded();
-  updateCacheStatus(ctx ?? activeContext);
-
-  return { responseId, byteSize, fullContent };
-}
-
-function buildRetrievalHint(
-  responseId: string,
-  itemKind: StoredItemKind,
-  itemCount: number,
-): string {
-  if (itemCount === 1) {
-    const indexName = itemKind === "url" ? "urlIndex" : "queryIndex";
-    return `Use perplexity-web-get-content({ responseId: "${responseId}", ${indexName}: 0 }) for the full content.`;
-  }
-
-  const indexName = itemKind === "url" ? "urlIndex" : "queryIndex";
-  return `Use perplexity-web-get-content({ responseId: "${responseId}" }) for the full response, or add ${indexName} to retrieve one item.`;
-}
-
-function prepareOutput(
-  fullContent: string,
-  responseId: string,
-  itemKind: StoredItemKind,
-  itemCount: number,
-): PreparedOutput {
-  if (fullContent.length <= MAX_INLINE_CONTENT) return { text: fullContent, truncated: false };
-
-  return {
-    text:
-      fullContent.slice(0, MAX_INLINE_CONTENT).trimEnd() +
-      `\n\n[Content truncated...] ${buildRetrievalHint(responseId, itemKind, itemCount)}`,
-    truncated: true,
-  };
-}
-
-function withStoredMetadata<T extends StoredMetadataDetails>(
-  details: T,
-  stored: StoredContentResult,
-  prepared: PreparedOutput,
-): T {
-  details.responseId = stored.responseId;
-  details.truncated = prepared.truncated;
-  details.fullLength = stored.fullContent.length;
-  details.byteSize = stored.byteSize;
-  details.cacheBytes = storedBytes;
-  details.cacheMaxBytes = MAX_STORED_BYTES;
-  return details;
-}
+const OUTPUT_DIR = "/tmp";
 
 function normalizeQueryList(queryList: unknown[]): string[] {
   const normalized: string[] = [];
@@ -247,25 +177,6 @@ function normalizeQueryList(queryList: unknown[]): string[] {
     if (typeof query !== "string") continue;
     const trimmed = query.trim();
     if (trimmed.length > 0) normalized.push(trimmed);
-  }
-  return normalized;
-}
-
-function normalizeUrlList(urlList: unknown[]): string[] {
-  const normalized: string[] = [];
-  for (const url of urlList) {
-    if (typeof url !== "string") continue;
-    const trimmed = url.trim();
-    if (trimmed.length === 0) continue;
-
-    try {
-      const parsed = new URL(trimmed);
-      if (parsed.protocol === "http:" || parsed.protocol === "https:") {
-        normalized.push(trimmed);
-      }
-    } catch {
-      // Ignore invalid URLs. The caller returns a clear error when none remain.
-    }
   }
   return normalized;
 }
@@ -300,13 +211,8 @@ function formatSearchSummary(results: SearchResult[], answer: string): string {
   return output;
 }
 
-function formatSearchItem(
-  query: string,
-  result: QueryResultData,
-  includeHeader: boolean,
-  headerLabel = "Query",
-): string {
-  let output = includeHeader ? `## ${headerLabel}: "${query}"\n\n` : "";
+function formatSearchItem(result: QueryResultData, includeHeader: boolean): string {
+  let output = includeHeader ? `## Query: "${result.query}"\n\n` : "";
 
   if (result.error) output += `Error: ${result.error}`;
   else if (result.results.length === 0) output += "No results found.";
@@ -315,12 +221,18 @@ function formatSearchItem(
   return output.trim();
 }
 
-function buildSearchItems(queryList: string[], results: QueryResultData[]): StoredContentItem[] {
-  const includeHeader = queryList.length > 1;
-  return results.map((result) => ({
-    label: result.query,
-    content: formatSearchItem(result.query, result, includeHeader),
-  }));
+function buildSearchOutput(results: QueryResultData[]): string {
+  const includeHeader = results.length > 1;
+  return results
+    .map((result) => formatSearchItem(result, includeHeader))
+    .join("\n\n")
+    .trim();
+}
+
+async function saveMarkdownOutput(fullContent: string): Promise<string> {
+  const path = join(OUTPUT_DIR, `perplexity-web-search-${Date.now()}-${randomUUID()}.md`);
+  await writeFile(path, fullContent, "utf8");
+  return path;
 }
 
 function buildSearchOptions(
@@ -339,179 +251,26 @@ function buildSearchOptions(
   return options;
 }
 
-function buildDetails(queryList: string[], results: QueryResultData[]): PerplexityWebSearchDetails {
+function buildDetails(results: QueryResultData[], outputPath: string): PerplexityWebSearchDetails {
   return {
-    queries: queryList,
-    queryCount: queryList.length,
+    outputPath,
+    queryCount: results.length,
     successfulQueries: results.filter((r) => !r.error).length,
     totalResults: results.reduce((sum, r) => sum + r.results.length, 0),
-    queryResults: results.map((r) => ({
-      query: r.query,
-      answer: r.error ? null : r.answer,
-      sources: r.results.map((source) => ({ title: source.title, url: source.url })),
-      error: r.error,
-    })),
-  };
-}
-
-function formatContentWithSources(content: string, sources: SearchResult[]): string {
-  let output = content;
-  if (sources.length > 0) {
-    output += `${output ? "\n\n---\n\n" : ""}**Sources:**\n`;
-    output += sources
-      .map((source, i) => `${i + 1}. ${source.title}\n   ${source.url}`)
-      .join("\n\n");
-  }
-  return output;
-}
-
-function formatFetchItem(url: string, result: FetchResultData, includeHeader: boolean): string {
-  let output = includeHeader ? `## URL: ${url}\n\n` : "";
-
-  if (result.error) output += `Error: ${result.error}`;
-  else if (!result.content && result.results.length === 0) output += "No content found.";
-  else output += formatContentWithSources(result.content, result.results);
-
-  return output.trim();
-}
-
-function buildFetchItems(urlList: string[], results: FetchResultData[]): StoredContentItem[] {
-  const includeHeader = urlList.length > 1;
-  return results.map((result) => ({
-    label: result.url,
-    content: formatFetchItem(result.url, result, includeHeader),
-  }));
-}
-
-function buildFetchOptions(
-  prompt: string | undefined,
-  signal: AbortSignal | undefined,
-): FetchOptions {
-  const options: FetchOptions = {};
-  const normalizedPrompt = prompt?.trim();
-  if (normalizedPrompt) options.prompt = normalizedPrompt;
-  if (signal) options.signal = signal;
-  return options;
-}
-
-function buildFetchDetails(
-  urlList: string[],
-  results: FetchResultData[],
-): PerplexityWebFetchDetails {
-  return {
-    urls: urlList,
-    urlCount: urlList.length,
-    successful: results.filter((r) => !r.error).length,
-    totalSources: results.reduce((sum, r) => sum + r.results.length, 0),
-    urlResults: results.map((r) => ({
-      url: r.url,
-      content: r.error ? null : r.content,
-      sources: r.results.map((source) => ({ title: source.title, url: source.url })),
-      error: r.error,
-    })),
-  };
-}
-
-function buildCodeSearchQuery(query: string): string {
-  const normalized = query.toLowerCase();
-  const hasCodeTerms =
-    /\b(api|code|docs?|documentation|example|examples|github|implementation|library|framework|package|sdk|source|stackoverflow|stack overflow)\b/.test(
-      normalized,
-    );
-  return hasCodeTerms
-    ? query
-    : `${query} code examples documentation GitHub Stack Overflow official docs`;
-}
-
-function buildCodeSearchOptions(
-  numResults: number | undefined,
-  signal: AbortSignal | undefined,
-): SearchOptions {
-  const options: SearchOptions = {};
-  if (typeof numResults === "number") options.numResults = numResults;
-  if (signal) options.signal = signal;
-  return options;
-}
-
-function buildCodeSearchItem(
-  query: string,
-  enhancedQuery: string,
-  result: QueryResultData,
-): StoredContentItem {
-  let content = formatSearchItem(query, result, true, "Code/docs search");
-  if (enhancedQuery !== query) {
-    content += `\n\n---\n\nEnhanced query: ${enhancedQuery}`;
-  }
-  return { label: query, content };
-}
-
-function getContentPreview(text: string, expanded: boolean): string {
-  const maxLength = expanded ? 500 : 120;
-  return text.length > maxLength ? text.slice(0, maxLength - 3) + "..." : text;
-}
-
-function appendStoredStatus(
-  statusLine: string,
-  details: StoredMetadataDetails | undefined,
-  theme: Theme,
-): string {
-  let output = statusLine;
-  if (details?.truncated) output += theme.fg("warning", " [truncated]");
-  if (details?.responseId) output += theme.fg("muted", ` [${details.responseId.slice(0, 8)}]`);
-  if (details?.cacheBytes !== undefined && details.cacheMaxBytes !== undefined) {
-    output += theme.fg(
-      "muted",
-      ` cache ${formatBytes(details.cacheBytes)}/${formatBytes(details.cacheMaxBytes)}`,
-    );
-  }
-  return output;
-}
-
-function getValidIndex(value: number | undefined): number | null {
-  if (typeof value !== "number") return null;
-  if (!Number.isInteger(value) || value < 0) return null;
-  return value;
-}
-
-function buildGetContentErrorDetails(
-  responseId: string,
-  error: string,
-): PerplexityGetContentDetails {
-  return {
-    responseId,
-    error,
-    cacheBytes: storedBytes,
-    cacheMaxBytes: MAX_STORED_BYTES,
   };
 }
 
 export default function PerplexityWebAccess(pi: ExtensionAPI): void {
-  pi.on("session_start", async (_event, ctx) => {
-    activeContext = ctx;
-    clearStoredContent(ctx);
-  });
-
-  pi.on("session_tree", async (_event, ctx) => {
-    activeContext = ctx;
-    updateCacheStatus(ctx);
-  });
-
-  pi.on("session_shutdown", () => {
-    clearStoredContent(activeContext);
-    activeContext?.ui.setStatus(CACHE_STATUS_ID, undefined);
-    activeContext = null;
-  });
-
   pi.registerTool({
     name: "perplexity-web-search",
     label: "Perplexity Web Search",
     description:
-      "Search the general web using Perplexity AI for current facts, news, comparisons, and broad research. Returns synthesized answers with citations. Do not use for specific URL reading (use perplexity-web-fetch) or programming/API/docs/code-example questions without a URL (use perplexity-code-search). Multiple queries run with up to 3 concurrent requests.",
+      "Search the general web using Perplexity AI for current facts, news, comparisons, and broad research. Saves synthesized answers with citations to a Markdown file in /tmp and returns the file path. Multiple queries run with up to 3 concurrent requests.",
     promptSnippet:
-      "Use for general/current web research, news, comparisons, and broad facts. Prefer {queries:[...]} with 2-4 varied angles. Use fetch for specific URLs and code-search for programming/docs/examples.",
+      "Use for general/current web research, news, comparisons, and broad facts. Prefer {queries:[...]} with 2-4 varied angles. Read the returned Markdown file path for results.",
     parameters: SearchParams,
 
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+    async execute(_toolCallId, params, signal, onUpdate) {
       const rawQueryList: unknown[] = Array.isArray(params.queries)
         ? params.queries
         : params.query !== undefined
@@ -560,21 +319,17 @@ export default function PerplexityWebAccess(pi: ExtensionAPI): void {
                 progress: completed / queryList.length,
                 completed,
                 total: queryList.length,
-                currentQuery: query,
               },
             });
           }
         },
       );
 
-      const items = buildSearchItems(queryList, searchResults);
-      const stored = storeFullContent("search", "query", items, ctx);
-      const prepared = prepareOutput(stored.fullContent, stored.responseId, "query", items.length);
-      const details = withStoredMetadata(buildDetails(queryList, searchResults), stored, prepared);
+      const outputPath = await saveMarkdownOutput(buildSearchOutput(searchResults));
 
       return {
-        content: [{ type: "text", text: prepared.text }],
-        details,
+        content: [{ type: "text", text: outputPath }],
+        details: buildDetails(searchResults, outputPath),
       };
     },
 
@@ -617,7 +372,7 @@ export default function PerplexityWebAccess(pi: ExtensionAPI): void {
       return new Text(lines.join("\n"), 0, 0);
     },
 
-    renderResult(result, { expanded, isPartial }, theme) {
+    renderResult(result, { isPartial }, theme) {
       const details = result.details as PerplexityWebSearchDetails | undefined;
 
       if (isPartial) {
@@ -639,430 +394,12 @@ export default function PerplexityWebAccess(pi: ExtensionAPI): void {
         details?.queryCount === 1
           ? ""
           : `${details?.successfulQueries}/${details?.queryCount} queries, `;
-      const baseStatus = theme.fg("success", `${queryInfo}${details?.totalResults ?? 0} sources`);
-      const statusLine = appendStoredStatus(baseStatus, details, theme);
-      const textContent = result.content.find((c) => c.type === "text")?.text || "";
+      const statusLine = theme.fg("success", `${queryInfo}${details?.totalResults ?? 0} sources`);
+      const outputPath =
+        details?.outputPath || result.content.find((c) => c.type === "text")?.text || "";
+      const pathLine = outputPath ? theme.fg("dim", outputPath) : theme.fg("dim", "No output file");
 
-      if (!expanded) {
-        const firstContentLine = textContent.split("\n").find((line) => {
-          const trimmed = line.trim();
-          return (
-            trimmed &&
-            !trimmed.startsWith("[") &&
-            !trimmed.startsWith("#") &&
-            !trimmed.startsWith("---")
-          );
-        });
-        const fallbackLine = (firstContentLine?.trim() || "").replace(/\*\*/g, "");
-        const preview = getContentPreview(fallbackLine, false);
-        return new Text(preview ? `${statusLine}\n${theme.fg("dim", preview)}` : statusLine, 0, 0);
-      }
-
-      const preview = getContentPreview(textContent, true);
-      return new Text(statusLine + "\n" + theme.fg("dim", preview), 0, 0);
-    },
-  });
-
-  pi.registerTool({
-    name: "perplexity-code-search",
-    label: "Perplexity Code Search",
-    description:
-      "Search for programming, API, library, framework, documentation, source-code, GitHub, Stack Overflow, and code-example context using Perplexity AI. Use when the user asks a coding/docs question without providing a specific URL. If a URL is provided, use perplexity-web-fetch. For non-code general/current research, use perplexity-web-search.",
-    promptSnippet:
-      "Use for programming/API/library/framework/docs/code examples/source-code questions when no specific URL was provided. Use fetch for URLs and web-search for non-code research.",
-    parameters: CodeSearchParams,
-
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const query = params.query.trim();
-      if (!query) {
-        return {
-          content: [{ type: "text", text: "Error: No query provided." }],
-          details: { error: "No query provided" } satisfies PerplexityCodeSearchDetails,
-        };
-      }
-
-      const enhancedQuery = buildCodeSearchQuery(query);
-      const options = buildCodeSearchOptions(params.numResults, signal);
-
-      try {
-        const { answer, results } = await searchWithPerplexity(enhancedQuery, options);
-        const result: QueryResultData = { query, answer, results, error: null };
-        const item = buildCodeSearchItem(query, enhancedQuery, result);
-        const stored = storeFullContent("code-search", "query", [item], ctx);
-        const prepared = prepareOutput(stored.fullContent, stored.responseId, "query", 1);
-        const details = withStoredMetadata<PerplexityCodeSearchDetails>(
-          {
-            query,
-            enhancedQuery,
-            totalResults: results.length,
-          },
-          stored,
-          prepared,
-        );
-
-        return {
-          content: [{ type: "text", text: prepared.text }],
-          details,
-        };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        return {
-          content: [{ type: "text", text: `Error: ${message}` }],
-          details: { query, enhancedQuery, error: message } satisfies PerplexityCodeSearchDetails,
-        };
-      }
-    },
-
-    renderCall(args, theme) {
-      const query = typeof args.query === "string" ? args.query.trim() : "";
-      if (!query) {
-        return new Text(
-          theme.fg("toolTitle", theme.bold("perplexity code ")) + theme.fg("error", "(no query)"),
-          0,
-          0,
-        );
-      }
-      const display = query.length > 70 ? query.slice(0, 67) + "..." : query;
-      return new Text(
-        theme.fg("toolTitle", theme.bold("perplexity code ")) + theme.fg("accent", display),
-        0,
-        0,
-      );
-    },
-
-    renderResult(result, { expanded }, theme) {
-      const details = result.details as PerplexityCodeSearchDetails | undefined;
-      if (details?.error) {
-        return new Text(theme.fg("error", `Error: ${details.error}`), 0, 0);
-      }
-
-      const baseStatus = theme.fg("success", `${details?.totalResults ?? 0} code/docs sources`);
-      const statusLine = appendStoredStatus(baseStatus, details, theme);
-      const textContent = result.content.find((c) => c.type === "text")?.text || "";
-      const preview = getContentPreview(textContent, expanded);
-      return new Text(preview ? `${statusLine}\n${theme.fg("dim", preview)}` : statusLine, 0, 0);
-    },
-  });
-
-  pi.registerTool({
-    name: "perplexity-web-fetch",
-    label: "Perplexity Web Fetch",
-    description:
-      "Read, extract, summarize, or answer questions about specific HTTP/HTTPS URL(s) using Perplexity AI. Use when the user provides URL(s) or asks about specific pages. Not for broad general research (use perplexity-web-search) or programming/docs discovery without a URL (use perplexity-code-search). Multiple URLs run with up to 3 concurrent requests. This Perplexity-only fetcher does not clone GitHub repos, analyze local files/videos, extract video frames, or persist content to disk.",
-    promptSnippet:
-      "Use when the user provides HTTP/HTTPS URL(s), or asks to read, summarize, extract, or answer questions about specific pages. Pass the user's exact question in prompt.",
-    parameters: FetchParams,
-
-    async execute(_toolCallId, params, signal, onUpdate, ctx) {
-      const rawUrlList: unknown[] = Array.isArray(params.urls)
-        ? params.urls
-        : params.url !== undefined
-          ? [params.url]
-          : [];
-      const urlList = normalizeUrlList(rawUrlList);
-
-      if (urlList.length === 0) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: "Error: No valid HTTP/HTTPS URL provided. Use 'url' or 'urls' parameter.",
-            },
-          ],
-          details: {
-            error: "No valid HTTP/HTTPS URL provided",
-          } satisfies PerplexityWebFetchDetails,
-        };
-      }
-
-      const options = buildFetchOptions(params.prompt, signal);
-      let completed = 0;
-
-      onUpdate?.({
-        content: [{ type: "text", text: `Fetching 0/${urlList.length} URLs...` }],
-        details: { phase: "fetch", progress: 0, completed, total: urlList.length },
-      });
-
-      const fetchResults = await runWithConcurrency(
-        urlList,
-        CONCURRENCY_LIMIT,
-        async (url): Promise<FetchResultData> => {
-          try {
-            const { content, results } = await fetchUrlWithPerplexity(url, options);
-            return { url, content, results, error: null };
-          } catch (err) {
-            const message = err instanceof Error ? err.message : String(err);
-            return { url, content: "", results: [], error: message };
-          } finally {
-            completed++;
-            onUpdate?.({
-              content: [{ type: "text", text: `Fetched ${completed}/${urlList.length}: "${url}"` }],
-              details: {
-                phase: "fetch",
-                progress: completed / urlList.length,
-                completed,
-                total: urlList.length,
-                currentUrl: url,
-              },
-            });
-          }
-        },
-      );
-
-      const items = buildFetchItems(urlList, fetchResults);
-      const stored = storeFullContent("fetch", "url", items, ctx);
-      const prepared = prepareOutput(stored.fullContent, stored.responseId, "url", items.length);
-      const details = withStoredMetadata(
-        buildFetchDetails(urlList, fetchResults),
-        stored,
-        prepared,
-      );
-
-      return {
-        content: [{ type: "text", text: prepared.text }],
-        details,
-      };
-    },
-
-    renderCall(args, theme) {
-      const rawUrlList: unknown[] = Array.isArray(args.urls)
-        ? args.urls
-        : args.url !== undefined
-          ? [args.url]
-          : [];
-      const urlList = normalizeUrlList(rawUrlList);
-      if (urlList.length === 0) {
-        return new Text(
-          theme.fg("toolTitle", theme.bold("perplexity fetch ")) + theme.fg("error", "(no URL)"),
-          0,
-          0,
-        );
-      }
-      if (urlList.length === 1) {
-        const url = urlList[0] ?? "";
-        const display = url.length > 60 ? url.slice(0, 57) + "..." : url;
-        return new Text(
-          theme.fg("toolTitle", theme.bold("perplexity fetch ")) + theme.fg("accent", display),
-          0,
-          0,
-        );
-      }
-
-      const lines = [
-        theme.fg("toolTitle", theme.bold("perplexity fetch ")) +
-          theme.fg("accent", `${urlList.length} URLs`),
-      ];
-      for (const url of urlList.slice(0, 5)) {
-        const display = url.length > 60 ? url.slice(0, 57) + "..." : url;
-        lines.push(theme.fg("muted", "  " + display));
-      }
-      if (urlList.length > 5) {
-        lines.push(theme.fg("muted", `  ... and ${urlList.length - 5} more`));
-      }
-      return new Text(lines.join("\n"), 0, 0);
-    },
-
-    renderResult(result, { expanded, isPartial }, theme) {
-      const details = result.details as PerplexityWebFetchDetails | undefined;
-
-      if (isPartial) {
-        const progress = details?.progress ?? 0;
-        const bar =
-          "█".repeat(Math.floor(progress * 10)) + "░".repeat(10 - Math.floor(progress * 10));
-        const count =
-          details?.completed !== undefined && details?.total !== undefined
-            ? `${details.completed}/${details.total}`
-            : details?.phase || "fetching";
-        return new Text(theme.fg("accent", `[${bar}] ${count}`), 0, 0);
-      }
-
-      if (details?.error) {
-        return new Text(theme.fg("error", `Error: ${details.error}`), 0, 0);
-      }
-
-      const countColor = (details?.successful ?? 0) > 0 ? "success" : "error";
-      const baseStatus =
-        theme.fg(countColor, `${details?.successful ?? 0}/${details?.urlCount ?? 0} URLs`) +
-        theme.fg("muted", `, ${details?.totalSources ?? 0} sources`);
-      const statusLine = appendStoredStatus(baseStatus, details, theme);
-      const textContent = result.content.find((c) => c.type === "text")?.text || "";
-
-      if (!expanded) {
-        const firstContentLine = textContent.split("\n").find((line) => {
-          const trimmed = line.trim();
-          return (
-            trimmed &&
-            !trimmed.startsWith("[") &&
-            !trimmed.startsWith("#") &&
-            !trimmed.startsWith("---")
-          );
-        });
-        const fallbackLine = (firstContentLine?.trim() || "").replace(/\*\*/g, "");
-        const preview = getContentPreview(fallbackLine, false);
-        return new Text(preview ? `${statusLine}\n${theme.fg("dim", preview)}` : statusLine, 0, 0);
-      }
-
-      const preview = getContentPreview(textContent, true);
-      return new Text(statusLine + "\n" + theme.fg("dim", preview), 0, 0);
-    },
-  });
-
-  pi.registerTool({
-    name: "perplexity-web-get-content",
-    label: "Perplexity Web Get Content",
-    description:
-      "Retrieve full current-session content previously stored by perplexity-web-search, perplexity-web-fetch, or perplexity-code-search. Use only when a prior result was truncated or when a specific stored query/URL needs to be read in full via responseId.",
-    promptSnippet:
-      "Use after a Perplexity web access tool returns a responseId, especially when output was truncated and full stored content is needed.",
-    parameters: GetContentParams,
-
-    async execute(_toolCallId, params) {
-      const entry = storedContent.get(params.responseId);
-      if (!entry) {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Error: Stored content for responseId "${params.responseId}" is no longer available. It may have been evicted from the in-memory cache or cleared at session shutdown.`,
-            },
-          ],
-          details: {
-            responseId: params.responseId,
-            error: "Stored content no longer available",
-            cacheBytes: storedBytes,
-            cacheMaxBytes: MAX_STORED_BYTES,
-          } satisfies PerplexityGetContentDetails,
-        };
-      }
-
-      const queryIndex = getValidIndex(params.queryIndex);
-      const urlIndex = getValidIndex(params.urlIndex);
-      if (params.queryIndex !== undefined && queryIndex === null) {
-        return {
-          content: [{ type: "text", text: "Error: queryIndex must be a non-negative integer." }],
-          details: buildGetContentErrorDetails(params.responseId, "Invalid queryIndex"),
-        };
-      }
-      if (params.urlIndex !== undefined && urlIndex === null) {
-        return {
-          content: [{ type: "text", text: "Error: urlIndex must be a non-negative integer." }],
-          details: buildGetContentErrorDetails(params.responseId, "Invalid urlIndex"),
-        };
-      }
-      if (queryIndex !== null && urlIndex !== null) {
-        return {
-          content: [{ type: "text", text: "Error: Use either queryIndex or urlIndex, not both." }],
-          details: buildGetContentErrorDetails(params.responseId, "Multiple selectors provided"),
-        };
-      }
-
-      let text: string;
-      let selectedIndex: number | undefined;
-      if (queryIndex !== null) {
-        if (entry.itemKind !== "query") {
-          return {
-            content: [
-              { type: "text", text: "Error: This stored response does not contain query items." },
-            ],
-            details: buildGetContentErrorDetails(params.responseId, "Wrong selector type"),
-          };
-        }
-        const item = entry.items[queryIndex];
-        if (!item) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Error: queryIndex ${queryIndex} out of range (0-${entry.items.length - 1}).`,
-              },
-            ],
-            details: buildGetContentErrorDetails(params.responseId, "Index out of range"),
-          };
-        }
-        text = item.content;
-        selectedIndex = queryIndex;
-      } else if (urlIndex !== null) {
-        if (entry.itemKind !== "url") {
-          return {
-            content: [
-              { type: "text", text: "Error: This stored response does not contain URL items." },
-            ],
-            details: buildGetContentErrorDetails(params.responseId, "Wrong selector type"),
-          };
-        }
-        const item = entry.items[urlIndex];
-        if (!item) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Error: urlIndex ${urlIndex} out of range (0-${entry.items.length - 1}).`,
-              },
-            ],
-            details: buildGetContentErrorDetails(params.responseId, "Index out of range"),
-          };
-        }
-        text = item.content;
-        selectedIndex = urlIndex;
-      } else {
-        text = joinStoredItems(entry.items);
-      }
-
-      const details: PerplexityGetContentDetails = {
-        responseId: params.responseId,
-        type: entry.type,
-        itemKind: entry.itemKind,
-        itemCount: entry.items.length,
-        byteSize: Buffer.byteLength(text, "utf8"),
-        cacheBytes: storedBytes,
-        cacheMaxBytes: MAX_STORED_BYTES,
-      };
-      if (selectedIndex !== undefined) details.selectedIndex = selectedIndex;
-
-      return {
-        content: [{ type: "text", text }],
-        details,
-      };
-    },
-
-    renderCall(args, theme) {
-      const responseId = typeof args.responseId === "string" ? args.responseId : "";
-      const queryIndex =
-        typeof args.queryIndex === "number" ? ` queryIndex=${args.queryIndex}` : "";
-      const urlIndex = typeof args.urlIndex === "number" ? ` urlIndex=${args.urlIndex}` : "";
-      const display = responseId ? responseId.slice(0, 8) : "(no responseId)";
-      return new Text(
-        theme.fg("toolTitle", theme.bold("perplexity get-content ")) +
-          theme.fg(responseId ? "accent" : "error", display + queryIndex + urlIndex),
-        0,
-        0,
-      );
-    },
-
-    renderResult(result, { expanded }, theme) {
-      const details = result.details as PerplexityGetContentDetails | undefined;
-      if (details?.error) {
-        return new Text(theme.fg("error", `Error: ${details.error}`), 0, 0);
-      }
-
-      const selected =
-        details?.selectedIndex !== undefined
-          ? ` ${details.itemKind}Index=${details.selectedIndex}`
-          : "";
-      const baseStatus = theme.fg(
-        "success",
-        `${details?.type ?? "content"}${selected} (${formatBytes(details?.byteSize ?? 0)})`,
-      );
-      const statusLine =
-        baseStatus +
-        theme.fg(
-          "muted",
-          ` cache ${formatBytes(details?.cacheBytes ?? 0)}/${formatBytes(details?.cacheMaxBytes ?? MAX_STORED_BYTES)}`,
-        );
-      const textContent = result.content.find((c) => c.type === "text")?.text || "";
-      if (!expanded) return new Text(statusLine, 0, 0);
-      const preview = getContentPreview(textContent, true);
-      return new Text(statusLine + "\n" + theme.fg("dim", preview), 0, 0);
+      return new Text(statusLine + "\n" + pathLine, 0, 0);
     },
   });
 }
