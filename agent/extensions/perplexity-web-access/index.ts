@@ -5,9 +5,9 @@ import {
   formatSize,
   truncateHead,
   type TruncationResult,
-} from "@mariozechner/pi-coding-agent";
-import { StringEnum } from "@mariozechner/pi-ai";
-import { Text } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import { StringEnum } from "@earendil-works/pi-ai";
+import { Text } from "@earendil-works/pi-tui";
 import { randomUUID } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -15,12 +15,7 @@ import { Type } from "typebox";
 
 const PERPLEXITY_API_URL = "https://api.perplexity.ai/v1/sonar";
 
-const SONAR_MODELS = [
-  "sonar",
-  "sonar-pro",
-  "sonar-deep-research",
-  "sonar-reasoning-pro",
-] as const;
+const SONAR_MODELS = ["sonar", "sonar-pro", "sonar-deep-research", "sonar-reasoning-pro"] as const;
 const SEARCH_RECENCY_FILTERS = ["hour", "day", "week", "month", "year"] as const;
 const SEARCH_MODES = ["web", "academic", "sec"] as const;
 const SEARCH_CONTEXT_SIZES = ["low", "medium", "high"] as const;
@@ -179,7 +174,8 @@ const SearchParams = Type.Object({
   domainFilter: Type.Optional(
     Type.Array(Type.String({ maxLength: 253 }), {
       maxItems: 20,
-      description: "Limit search results to specific domains, e.g. ['github.com', 'wikipedia.org']. Exclusion syntax is not supported by /v1/sonar.",
+      description:
+        "Limit search results to specific domains, e.g. ['github.com', 'wikipedia.org']. Exclusion syntax is not supported by /v1/sonar.",
     }),
   ),
   searchLanguageFilter: Type.Optional(
@@ -242,12 +238,22 @@ const SearchParams = Type.Object({
     }),
   ),
   city: Type.Optional(Type.String({ description: "Optional city for search personalization." })),
-  region: Type.Optional(Type.String({ description: "Optional region/state for search personalization." })),
+  region: Type.Optional(
+    Type.String({ description: "Optional region/state for search personalization." }),
+  ),
   latitude: Type.Optional(
-    Type.Number({ minimum: -90, maximum: 90, description: "Optional latitude for search personalization." }),
+    Type.Number({
+      minimum: -90,
+      maximum: 90,
+      description: "Optional latitude for search personalization.",
+    }),
   ),
   longitude: Type.Optional(
-    Type.Number({ minimum: -180, maximum: 180, description: "Optional longitude for search personalization." }),
+    Type.Number({
+      minimum: -180,
+      maximum: 180,
+      description: "Optional longitude for search personalization.",
+    }),
   ),
   reasoningEffort: Type.Optional(
     StringEnum(REASONING_EFFORTS, {
@@ -351,7 +357,8 @@ function extractMessageContent(content: unknown): string {
 
 function buildWebSearchOptions(options: SearchOptions): Record<string, unknown> | undefined {
   const webSearchOptions: Record<string, unknown> = {};
-  if (options.searchContextSize) webSearchOptions["search_context_size"] = options.searchContextSize;
+  if (options.searchContextSize)
+    webSearchOptions["search_context_size"] = options.searchContextSize;
   if (options.searchType) webSearchOptions["search_type"] = options.searchType;
 
   const userLocation: Record<string, unknown> = {};
@@ -387,7 +394,8 @@ function buildSearchResults(
 
   for (const result of searchResults) {
     if (typeof result.url !== "string" || !result.url.trim()) continue;
-    const title = typeof result.title === "string" && result.title.trim() ? result.title.trim() : result.url;
+    const title =
+      typeof result.title === "string" && result.title.trim() ? result.title.trim() : result.url;
     const snippet = typeof result.snippet === "string" ? normalizeWhitespace(result.snippet) : "";
 
     addSearchResult(
@@ -623,7 +631,8 @@ function formatSearchItem(result: QueryResultData, includeHeader: boolean): stri
   let output = includeHeader ? `## Query: "${result.query}"\n\n` : "";
 
   if (result.error) output += `Error: ${result.error}`;
-  else if (!result.answer && result.results.length === 0) output += "No answer or sources returned.";
+  else if (!result.answer && result.results.length === 0)
+    output += "No answer or sources returned.";
   else output += formatSearchSummary(result.results, result.answer, result.relatedQuestions);
 
   return output.trim();
@@ -685,7 +694,8 @@ function buildSearchOptions(
   if (params.searchAfterDateFilter) options.searchAfterDateFilter = params.searchAfterDateFilter;
   if (params.searchBeforeDateFilter) options.searchBeforeDateFilter = params.searchBeforeDateFilter;
   if (params.lastUpdatedAfterFilter) options.lastUpdatedAfterFilter = params.lastUpdatedAfterFilter;
-  if (params.lastUpdatedBeforeFilter) options.lastUpdatedBeforeFilter = params.lastUpdatedBeforeFilter;
+  if (params.lastUpdatedBeforeFilter)
+    options.lastUpdatedBeforeFilter = params.lastUpdatedBeforeFilter;
   if (params.country) options.country = params.country;
   if (params.city) options.city = params.city;
   if (params.region) options.region = params.region;
@@ -751,8 +761,7 @@ export default function PerplexityWebAccess(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "perplexity-web-search",
     label: "Perplexity Web Search",
-    description:
-      `Search and synthesize current web, academic, or SEC information using Perplexity Sonar (/v1/sonar). Returns the complete output when under ${DEFAULT_MAX_LINES} lines and ${formatSize(DEFAULT_MAX_BYTES)}. If either limit is exceeded, returns a truncated preview and saves the full Markdown output with sources to /tmp. Multiple queries run with up to 3 concurrent requests.`,
+    description: `Search and synthesize current web, academic, or SEC information using Perplexity Sonar (/v1/sonar). Returns the complete output when under ${DEFAULT_MAX_LINES} lines and ${formatSize(DEFAULT_MAX_BYTES)}. If either limit is exceeded, returns a truncated preview and saves the full Markdown output with sources to /tmp. Multiple queries run with up to 3 concurrent requests.`,
     promptSnippet:
       "Use for general/current web research, news, comparisons, academic or SEC lookups, and broad facts. Prefer {queries:[...]} with 2-4 varied angles. If the response is truncated, the full Markdown output path is included.",
     parameters: SearchParams,
@@ -787,10 +796,8 @@ export default function PerplexityWebAccess(pi: ExtensionAPI): void {
         CONCURRENCY_LIMIT,
         async (query): Promise<QueryResultData> => {
           try {
-            const { id, model, answer, results, relatedQuestions, usage } = await searchWithPerplexity(
-              query,
-              options,
-            );
+            const { id, model, answer, results, relatedQuestions, usage } =
+              await searchWithPerplexity(query, options);
             return { query, id, model, answer, results, relatedQuestions, usage, error: null };
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -847,7 +854,8 @@ export default function PerplexityWebAccess(pi: ExtensionAPI): void {
           ? [args.query]
           : [];
       const queryList = normalizeQueryList(rawQueryList);
-      const model = typeof args.model === "string" && args.model !== "sonar" ? ` ${args.model}` : "";
+      const model =
+        typeof args.model === "string" && args.model !== "sonar" ? ` ${args.model}` : "";
       if (queryList.length === 0) {
         return new Text(
           theme.fg("toolTitle", theme.bold("perplexity search ")) + theme.fg("error", "(no query)"),
@@ -912,7 +920,8 @@ export default function PerplexityWebAccess(pi: ExtensionAPI): void {
           : theme.fg("success", baseStatus);
 
       const usageParts: string[] = [];
-      if (details?.usage?.totalTokens !== undefined) usageParts.push(`${details.usage.totalTokens} tokens`);
+      if (details?.usage?.totalTokens !== undefined)
+        usageParts.push(`${details.usage.totalTokens} tokens`);
       if (details?.usage?.searchQueries !== undefined) {
         usageParts.push(`${details.usage.searchQueries} searches`);
       }

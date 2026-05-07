@@ -17,3 +17,4 @@ compatibility: Requires gh and jq.
   e.g. `gh api repos/:owner/:repo/pulls/123/files --jq '.[].filename'`.
 - Prefer JSON plus `--jq` or external `jq` over parsing tables or human-readable text.
   e.g. `gh run list --json databaseId,status,conclusion | jq '.[] | select(.conclusion == "failure")'`.
+- Always use `gh pr merge --merge` when merging pull requests; do not use squash or rebase merge unless explicitly instructed.

@@ -1,11 +1,11 @@
 {
-  "lastChangelogVersion": "0.73.1",
+  "lastChangelogVersion": "0.74.0",
   "packages": [
     "git:github.com/earendil-works/pi-review"
   ],
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "high",
+  "defaultThinkingLevel": "xhigh",
   "hideThinkingBlock": true,
   "treeFilterMode": "no-tools",
   "shellCommandPrefix": "shopt -s expand_aliases\neval \"$(grep '^alias ' ~/.bashrc)\""
