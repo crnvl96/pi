@@ -68,3 +68,27 @@ For multi-step tasks, state a brief plan:
 - Don’t switch the conversation language solely because the user used isolated words or phrases in another language.
 - Say what changed and how it was verified.
 - Mention skipped verification or uncertainty explicitly.
+
+## Command Output
+
+Protect context usage. **Any command with unknown or potentially large output must be byte-capped.**
+
+Default pattern:
+
+```bash
+COMMAND 2>&1 | head -c 4000
+```
+
+For logs or recent failures:
+
+```bash
+COMMAND 2>&1 | tail -c 4000
+```
+
+Do not rely on line limits as the only cap. A single line can be huge. Avoid using only:
+
+```bash
+head -n
+tail -n
+sed -n '1,20p'
+```
