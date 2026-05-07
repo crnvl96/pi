@@ -3,7 +3,7 @@
   "packages": [],
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.3-codex-spark",
-  "defaultThinkingLevel": "medium",
+  "defaultThinkingLevel": "minimal",
   "hideThinkingBlock": true,
   "treeFilterMode": "no-tools",
   "shellCommandPrefix": "shopt -s expand_aliases\neval \"$(grep '^alias ' ~/.bashrc)\"",

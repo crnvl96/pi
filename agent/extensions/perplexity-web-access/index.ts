@@ -1,49 +1,22 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@mariozechner/pi-coding-agent";
-import { StringEnum } from "@mariozechner/pi-ai";
 import { Text } from "@mariozechner/pi-tui";
-import { Type } from "typebox";
-import { getApiKey } from "./client.js";
-
-export interface SearchResult {
-  title: string;
-  url: string;
-  snippet: string;
-}
-
-export interface SearchResponse {
-  answer: string;
-  results: SearchResult[];
-}
-
-export interface FetchResponse {
-  content: string;
-  results: SearchResult[];
-}
-
-export interface PerplexityApiResponse {
-  choices?: Array<{ message?: { content?: string } }>;
-  citations?: unknown[];
-}
+import {
+  SearchParams,
+  searchWithPerplexity,
+  type SearchOptions,
+  type SearchResult,
+} from "./search.js";
+import { FetchParams, fetchUrlWithPerplexity, type FetchOptions } from "./fetch.js";
+import { CodeSearchParams } from "./code-search.js";
+import { GetContentParams } from "./get-content.js";
 
 export interface QueryResultData {
   query: string;
   answer: string;
   results: SearchResult[];
   error: string | null;
-}
-
-export interface SearchOptions {
-  numResults?: number;
-  recencyFilter?: "day" | "week" | "month" | "year";
-  domainFilter?: string[];
-  signal?: AbortSignal;
-}
-
-export interface FetchOptions {
-  prompt?: string;
-  signal?: AbortSignal;
 }
 
 export interface StoredMetadataDetails {
@@ -72,149 +45,6 @@ export interface PerplexityWebSearchDetails extends StoredMetadataDetails {
     sources: Array<{ title: string; url: string }>;
     error: string | null;
   }>;
-}
-
-const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
-
-const RATE_LIMIT = {
-  maxRequests: 10,
-  windowMs: 60 * 1000,
-};
-
-const requestTimestamps: number[] = [];
-
-function checkRateLimit(): void {
-  const now = Date.now();
-  const windowStart = now - RATE_LIMIT.windowMs;
-
-  while ((requestTimestamps[0] ?? Infinity) < windowStart) {
-    requestTimestamps.shift();
-  }
-
-  if (requestTimestamps.length >= RATE_LIMIT.maxRequests) {
-    const oldestTimestamp = requestTimestamps[0];
-    if (oldestTimestamp === undefined) return;
-    const waitMs = oldestTimestamp + RATE_LIMIT.windowMs - now;
-    throw new Error(`Rate limited. Try again in ${Math.ceil(waitMs / 1000)}s`);
-  }
-
-  requestTimestamps.push(now);
-}
-
-function validateDomainFilter(domains: string[]): string[] {
-  return domains.filter((d) => {
-    const domain = d.startsWith("-") ? d.slice(1) : d;
-    return /^[a-zA-Z0-9][a-zA-Z0-9-_.]*\.[a-zA-Z]{2,}$/.test(domain);
-  });
-}
-
-function buildFetchQuery(url: string, prompt?: string): string {
-  const normalizedPrompt = prompt?.trim();
-  if (normalizedPrompt) {
-    return [
-      "Using the content available at this URL, answer the user's request in clear markdown.",
-      "Include important details, preserve source attribution, and cite source URLs when relevant.",
-      "If the page cannot be fully accessed, say what is unavailable instead of inventing details.",
-      "",
-      `User request: ${normalizedPrompt}`,
-      "",
-      `URL: ${url}`,
-    ].join("\n");
-  }
-
-  return [
-    "Fetch and extract the readable content from this URL as markdown.",
-    "Preserve the title, key facts, important details, and source attribution.",
-    "If the page cannot be fully accessed, summarize the accessible content and say what is unavailable.",
-    "",
-    `URL: ${url}`,
-  ].join("\n");
-}
-
-export async function searchWithPerplexity(
-  query: string,
-  options: SearchOptions = {},
-): Promise<SearchResponse> {
-  checkRateLimit();
-
-  const apiKey = getApiKey();
-  const numResults = Math.min(options.numResults ?? 5, 20);
-
-  const requestBody: Record<string, unknown> = {
-    model: "sonar",
-    messages: [{ role: "user", content: query }],
-    max_tokens: 1024,
-    return_related_questions: false,
-  };
-
-  if (options.recencyFilter) {
-    requestBody["search_recency_filter"] = options.recencyFilter;
-  }
-
-  if (options.domainFilter && options.domainFilter.length > 0) {
-    const validated = validateDomainFilter(options.domainFilter);
-    if (validated.length > 0) {
-      requestBody["search_domain_filter"] = validated;
-    }
-  }
-
-  const requestInit: RequestInit = {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(requestBody),
-  };
-  if (options.signal) requestInit.signal = options.signal;
-
-  const response = await fetch(PERPLEXITY_API_URL, requestInit);
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Perplexity API error ${response.status}: ${errorText}`);
-  }
-
-  let data: PerplexityApiResponse;
-  try {
-    data = (await response.json()) as PerplexityApiResponse;
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw new Error(`Perplexity API returned invalid JSON: ${message}`);
-  }
-
-  const answer = data.choices?.[0]?.message?.content || "";
-  const citations = Array.isArray(data.citations) ? data.citations : [];
-
-  const results: SearchResult[] = [];
-  for (let i = 0; i < Math.min(citations.length, numResults); i++) {
-    const citation = citations[i];
-    if (typeof citation === "string") {
-      results.push({ title: `Source ${i + 1}`, url: citation, snippet: "" });
-    } else if (citation && typeof citation === "object") {
-      const url = "url" in citation ? citation.url : undefined;
-      if (typeof url !== "string") continue;
-      const title =
-        "title" in citation && typeof citation.title === "string"
-          ? citation.title
-          : `Source ${i + 1}`;
-      results.push({ title, url, snippet: "" });
-    }
-  }
-
-  return { answer, results };
-}
-
-export async function fetchUrlWithPerplexity(
-  url: string,
-  options: FetchOptions = {},
-): Promise<FetchResponse> {
-  const query = buildFetchQuery(url, options.prompt);
-  const searchOptions: SearchOptions = {};
-  if (options.signal) searchOptions.signal = options.signal;
-
-  const { answer, results } = await searchWithPerplexity(query, searchOptions);
-  return { content: answer, results };
 }
 
 // Tool output cache and rendering constants
@@ -299,73 +129,6 @@ interface PreparedOutput {
 const storedContent = new Map<string, StoredContentEntry>();
 let storedBytes = 0;
 let activeContext: ExtensionContext | null = null;
-
-const SearchParams = Type.Object({
-  query: Type.Optional(
-    Type.String({
-      description:
-        "Single general web search query. For programming/API/docs/code examples, use perplexity-code-search instead. For specific URLs, use perplexity-web-fetch.",
-    }),
-  ),
-  queries: Type.Optional(
-    Type.Array(Type.String(), {
-      description:
-        "Multiple general web research queries searched with up to 3 concurrent requests, each returning its own synthesized answer. Prefer this for broad research — vary phrasing, scope, and angle across 2-4 queries. Good: ['React vs Vue performance benchmarks 2026', 'React vs Vue developer experience comparison', 'React ecosystem size vs Vue ecosystem']. Bad: ['React vs Vue', 'React vs Vue comparison', 'React vs Vue review'] (too similar, redundant results).",
-    }),
-  ),
-  numResults: Type.Optional(
-    Type.Number({ description: "Results per query (default: 5, max: 20)" }),
-  ),
-  recencyFilter: Type.Optional(
-    StringEnum(["day", "week", "month", "year"] as const, { description: "Filter by recency" }),
-  ),
-  domainFilter: Type.Optional(
-    Type.Array(Type.String(), { description: "Limit to domains (prefix with - to exclude)" }),
-  ),
-});
-
-const FetchParams = Type.Object({
-  url: Type.Optional(Type.String({ description: "Single HTTP/HTTPS URL to read or summarize" })),
-  urls: Type.Optional(
-    Type.Array(Type.String(), {
-      description: "Multiple HTTP/HTTPS URLs to read or summarize with up to 3 concurrent requests",
-    }),
-  ),
-  prompt: Type.Optional(
-    Type.String({
-      description:
-        "Question or instruction for extraction from the provided URL(s). Pass the user's specific question here when they ask about a particular aspect of the page.",
-    }),
-  ),
-});
-
-const CodeSearchParams = Type.Object({
-  query: Type.String({
-    description:
-      "Programming/API/library/framework/docs/source-code question. Do not use for specific URLs; use perplexity-web-fetch when a URL is provided.",
-  }),
-  numResults: Type.Optional(
-    Type.Number({ description: "Sources to return (default: 5, max: 20)" }),
-  ),
-});
-
-const GetContentParams = Type.Object({
-  responseId: Type.String({
-    description: "The responseId returned by a Perplexity web access tool",
-  }),
-  queryIndex: Type.Optional(
-    Type.Integer({
-      minimum: 0,
-      description: "Retrieve a specific stored query/code-search item by zero-based index",
-    }),
-  ),
-  urlIndex: Type.Optional(
-    Type.Integer({
-      minimum: 0,
-      description: "Retrieve a specific stored fetch URL by zero-based index",
-    }),
-  ),
-});
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
