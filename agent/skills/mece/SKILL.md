@@ -22,7 +22,7 @@ Use MECE to structure plans, analyses, drafts, recommendations, and problem deco
 
 ## Output Guidelines
 
-- Prefer numbered sections.
+- Prefer numbered sections or a simple tree/table.
 - Label the organizing dimension when useful, e.g. "MECE by project phase" or "MECE by revenue driver".
 - Keep categories parallel in wording and level of abstraction.
 - Do not create extra categories just to force symmetry.
