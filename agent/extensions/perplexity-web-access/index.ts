@@ -759,7 +759,7 @@ function buildDetails(
 
 export default function PerplexityWebAccess(pi: ExtensionAPI): void {
   pi.registerTool({
-    name: "perplexity-web-search",
+    name: "web-search",
     label: "Perplexity Web Search",
     description: `Search and synthesize current web, academic, or SEC information using Perplexity Sonar (/v1/sonar). Returns the complete output when under ${DEFAULT_MAX_LINES} lines and ${formatSize(DEFAULT_MAX_BYTES)}. If either limit is exceeded, returns a truncated preview and saves the full Markdown output with sources to /tmp. Multiple queries run with up to 3 concurrent requests.`,
     promptSnippet:
