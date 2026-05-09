@@ -13,7 +13,7 @@ Use MECE to structure plans, analyses, drafts, recommendations, and problem deco
 
 1. Restate the objective and scope in one sentence.
 2. Choose the main MECE dimension before drafting, such as time phases, workstreams, stakeholders, functions, system layers, causes, or options.
-3. Create 3-7 top-level categories that are:
+3. Create top level categories that are:
    - Mutually exclusive: each item belongs in one category only.
    - Collectively exhaustive: all necessary work, factors, or ideas are covered.
 4. Add sub-items under each category. Keep each level internally MECE where practical.
