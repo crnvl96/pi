@@ -25,7 +25,7 @@ uv init --script foo.py            # Create script with inline metadata
 # ///
 ```
 
-See [scripts.md](references/scripts.md) for full details on running scripts, locking, and reproducibility.
+See [scripts.md](scripts.md) for full details on running scripts, locking, and reproducibility.
 
 ## Build Backend
 
@@ -37,4 +37,4 @@ requires = ["uv_build>=0.9.28,<0.10.0"]
 build-backend = "uv_build"
 ```
 
-See [build.md](references/build.md) for project structure, namespaces, and file inclusion.
+See [build.md](build.md) for project structure, namespaces, and file inclusion.
