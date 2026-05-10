@@ -485,8 +485,7 @@ async function truncateForTool(
     resultText += `\n\n[Output truncated: showing ${truncation.outputLines} of ${truncation.totalLines} lines`;
     resultText += ` (${formatSize(truncation.outputBytes)} of ${formatSize(truncation.totalBytes)}).`;
     resultText += ` ${truncatedLines} lines (${formatSize(truncatedBytes)}) omitted.`;
-    resultText += ` Full output saved to: ${tempFile}.`;
-    resultText += ` The agent may access the full returned content with read({ path: "${tempFile}" }).]`;
+    resultText += ` If the truncated output is not enough to answer the user properly, read the full output before answering: read({ path: "${tempFile}" }).]`;
   }
 
   return { text: resultText, details };
@@ -666,14 +665,6 @@ export default function (pi: ExtensionAPI) {
       if (expanded) {
         const content = result.content.find((c) => c.type === "text")?.text || "";
         text += "\n" + theme.fg("dim", content.slice(0, 1000));
-        if (details?.fullOutputPath) {
-          text +=
-            "\n" +
-            theme.fg(
-              "dim",
-              `Full output: ${details.fullOutputPath} (use read({ path: "${details.fullOutputPath}" }) for full returned content)`,
-            );
-        }
       }
       return new Text(text, 0, 0);
     },
@@ -768,14 +759,6 @@ export default function (pi: ExtensionAPI) {
       if (expanded) {
         const content = result.content.find((c) => c.type === "text")?.text || "";
         text += "\n" + theme.fg("dim", content.slice(0, 1000));
-        if (details?.fullOutputPath) {
-          text +=
-            "\n" +
-            theme.fg(
-              "dim",
-              `Full output: ${details.fullOutputPath} (use read({ path: "${details.fullOutputPath}" }) for full returned content)`,
-            );
-        }
       }
       return new Text(text, 0, 0);
     },
