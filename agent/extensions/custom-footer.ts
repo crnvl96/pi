@@ -4,13 +4,24 @@
  * footerData exposes data not otherwise accessible:
  * - getGitBranch(): current git branch
  * - getExtensionStatuses(): texts from ctx.ui.setStatus()
- *
- * Token stats come from ctx.sessionManager/ctx.model (already accessible).
  */
 
-import type { AssistantMessage } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth } from "@earendil-works/pi-tui";
+
+const ansi = {
+  reset: "\x1b[0m",
+  gray: "\x1b[90m",
+  cyan: "\x1b[36m",
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  red: "\x1b[31m",
+} as const;
+
+const color = (code: string, text: string) => `${code}${text}${ansi.reset}`;
+const gray = (text: string) => color(ansi.gray, text);
+const joinStatusParts = (parts: Array<string | undefined>) =>
+  parts.filter((part): part is string => !!part).join(gray(" · "));
 
 export default function (pi: ExtensionAPI) {
   let enabled = true;
@@ -23,32 +34,17 @@ export default function (pi: ExtensionAPI) {
         dispose: unsub,
         invalidate() {},
         render(width: number): string[] {
-          // Compute tokens from ctx (already accessible to extensions)
-          let input = 0,
-            output = 0,
-            cacheRead = 0,
-            cacheWrite = 0,
-            cost = 0;
-          for (const e of ctx.sessionManager.getBranch()) {
-            if (e.type === "message" && e.message.role === "assistant") {
-              const m = e.message as AssistantMessage;
-              input += m.usage.input;
-              output += m.usage.output;
-              cacheRead += m.usage.cacheRead;
-              cacheWrite += m.usage.cacheWrite;
-              cost += m.usage.cost.total;
-            }
-          }
-
           // Get git branch (not otherwise accessible)
           const branch = footerData.getGitBranch();
-          const fmt = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`);
-
-          const leftContent = `↑${fmt(input)} ↓${fmt(output)} R${fmt(cacheRead)} W${fmt(cacheWrite)} $${cost.toFixed(3)}`;
+          const fmt = (n: number) => {
+            if (n < 1000) return n.toString();
+            if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
+            if (n < 1000000) return `${Math.round(n / 1000)}k`;
+            if (n < 10000000) return `${(n / 1000000).toFixed(1)}M`;
+            return `${Math.round(n / 1000000)}M`;
+          };
           const sessionLabel =
             ctx.sessionManager.getSessionName() || ctx.sessionManager.getSessionId();
-          const left = theme.fg("dim", `${leftContent} ~ ${sessionLabel}`);
-
           let cwd = ctx.cwd;
           const home = process.env.HOME;
           if (home && cwd === home) {
@@ -56,17 +52,34 @@ export default function (pi: ExtensionAPI) {
           } else if (home && cwd.startsWith(`${home}/`)) {
             cwd = `~/${cwd.slice(home.length + 1)}`;
           }
-          const cwdBranchStr = branch ? `${cwd} (${branch})` : cwd;
+          const cwdStr = branch ? `${cwd} (${branch})` : cwd;
           const thinkingLevel = pi.getThinkingLevel();
-          const supportsThinking =
-            !!ctx.model?.reasoning && ctx.model.thinkingLevelMap?.[thinkingLevel] !== null;
-          const modelStr = ctx.model
-            ? `${ctx.model.provider}/${ctx.model.id}${supportsThinking ? `:${thinkingLevel}` : ""}`
-            : "no-model";
-          const right = theme.fg("dim", `${modelStr} ${cwdBranchStr}`);
+          const modelStr = ctx.model ? gray(`${ctx.model.provider}/${ctx.model.id}`) : undefined;
+          const contextUsage = ctx.getContextUsage();
+          const contextColor =
+            contextUsage?.percent === undefined || contextUsage.percent === null
+              ? undefined
+              : contextUsage.percent <= 50
+                ? ansi.green
+                : contextUsage.percent < 70
+                  ? ansi.yellow
+                  : ansi.red;
+          const contextStr =
+            contextUsage?.percent === undefined || contextUsage.percent === null || !contextColor
+              ? undefined
+              : color(
+                  contextColor,
+                  `${contextUsage.percent.toFixed(1)}%/${fmt(contextUsage.contextWindow)}`,
+                );
+          const leftContent = joinStatusParts([
+            sessionLabel ? gray(sessionLabel) : undefined,
+            modelStr,
+            cwdStr ? gray(cwdStr) : undefined,
+            thinkingLevel ? theme.getThinkingBorderColor(thinkingLevel)(thinkingLevel) : undefined,
+            contextStr,
+          ]);
 
-          const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
-          return [truncateToWidth(left + pad + right, width)];
+          return [truncateToWidth(leftContent, width)];
         },
       };
     });
