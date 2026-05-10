@@ -44,18 +44,26 @@ export default function (pi: ExtensionAPI) {
           const branch = footerData.getGitBranch();
           const fmt = (n: number) => (n < 1000 ? `${n}` : `${(n / 1000).toFixed(1)}k`);
 
-          const left = theme.fg(
-            "dim",
-            `↑${fmt(input)} ↓${fmt(output)} R${fmt(cacheRead)} W${fmt(cacheWrite)} $${cost.toFixed(3)}`,
-          );
-          const branchStr = branch ? ` (${branch})` : "";
+          const leftContent = `↑${fmt(input)} ↓${fmt(output)} R${fmt(cacheRead)} W${fmt(cacheWrite)} $${cost.toFixed(3)}`;
+          const sessionLabel =
+            ctx.sessionManager.getSessionName() || ctx.sessionManager.getSessionId();
+          const left = theme.fg("dim", `${leftContent} ~ ${sessionLabel}`);
+
+          let cwd = ctx.cwd;
+          const home = process.env.HOME;
+          if (home && cwd === home) {
+            cwd = "~/";
+          } else if (home && cwd.startsWith(`${home}/`)) {
+            cwd = `~/${cwd.slice(home.length + 1)}`;
+          }
+          const cwdBranchStr = branch ? `${cwd} (${branch})` : cwd;
           const thinkingLevel = pi.getThinkingLevel();
           const supportsThinking =
             !!ctx.model?.reasoning && ctx.model.thinkingLevelMap?.[thinkingLevel] !== null;
           const modelStr = ctx.model
             ? `${ctx.model.provider}/${ctx.model.id}${supportsThinking ? `:${thinkingLevel}` : ""}`
             : "no-model";
-          const right = theme.fg("dim", `${modelStr}${branchStr}`);
+          const right = theme.fg("dim", `${modelStr} ${cwdBranchStr}`);
 
           const pad = " ".repeat(Math.max(1, width - visibleWidth(left) - visibleWidth(right)));
           return [truncateToWidth(left + pad + right, width)];
