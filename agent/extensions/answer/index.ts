@@ -16,12 +16,13 @@ import type {
   ExtensionContext,
   ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
-import { BorderedLoader } from "@earendil-works/pi-coding-agent";
+import { BorderedLoader, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import {
   type Component,
   Editor,
   type EditorTheme,
   Key,
+  Markdown,
   matchesKey,
   truncateToWidth,
   type TUI,
@@ -32,6 +33,7 @@ import {
 // Structured output format for question extraction
 interface ExtractedQuestion {
   question: string;
+  recommendedAnswer?: string;
   context?: string;
 }
 
@@ -46,6 +48,7 @@ Output a JSON object with this structure:
   "questions": [
     {
       "question": "The question text",
+      "recommendedAnswer": "Optional recommended answer. Preserve the complete markdown answer, including code blocks, bullets, and examples.",
       "context": "Optional context that helps answer the question"
     }
   ]
@@ -54,8 +57,9 @@ Output a JSON object with this structure:
 Rules:
 - Extract all questions that require user input
 - Keep questions in the order they appeared
-- Be concise with question text
-- Include context only when it provides essential information for answering
+- Be concise with question text, but do not omit any part of the question
+- If a question has a **Recommended Answer** / **Recommended answer** section, put the full section body in recommendedAnswer exactly enough to preserve all meaning, code blocks, bullets, examples, and snippets
+- Include context only when it provides essential information for answering and is not already part of recommendedAnswer
 - If no questions are found, return {"questions": []}
 
 Example output:
@@ -63,6 +67,7 @@ Example output:
   "questions": [
     {
       "question": "What is your preferred database?",
+      "recommendedAnswer": "PostgreSQL, unless there is an existing operational reason to prefer MySQL.",
       "context": "We can only configure MySQL and PostgreSQL because of what is implemented."
     },
     {
@@ -124,6 +129,55 @@ function parseExtractionResult(text: string): ExtractionResult | null {
   } catch {
     return null;
   }
+}
+
+function splitTopLevelNumberedItems(text: string): string[] {
+  const items: string[][] = [];
+  let current: string[] | undefined;
+  let inFence = false;
+
+  for (const line of text.split(/\r?\n/)) {
+    if (!inFence && /^\d+\.\s+.*\*\*\s*Question\s*:?\s*\*\*/i.test(line)) {
+      current = [line.replace(/^\d+\.\s+/, "")];
+      items.push(current);
+    } else if (current) {
+      current.push(line);
+    }
+
+    if (/^\s*(?:```|~~~)/.test(line)) {
+      inFence = !inFence;
+    }
+  }
+
+  return items.map((item) => item.join("\n").trim()).filter((item) => item.length > 0);
+}
+
+function parseQuestionWithRecommendation(item: string): ExtractedQuestion | null {
+  const questionLabel = /\*\*\s*Question\s*:?\s*\*\*\s*:?\s*/i.exec(item);
+  if (!questionLabel) return null;
+
+  const questionStart = questionLabel.index + questionLabel[0].length;
+  const afterQuestion = item.slice(questionStart);
+  const answerLabel = /\*\*\s*Recommended\s+Answer\s*:?\s*\*\*\s*:?\s*/i.exec(afterQuestion);
+  if (!answerLabel) return null;
+
+  const answerStart = questionStart + answerLabel.index + answerLabel[0].length;
+  const question = item
+    .slice(questionStart, questionStart + answerLabel.index)
+    .trim()
+    .replace(/\s+/g, " ");
+  const recommendedAnswer = item.slice(answerStart).trim();
+
+  if (!question || !recommendedAnswer) return null;
+  return { question, recommendedAnswer };
+}
+
+function parseGrillMeQuestions(text: string): ExtractionResult | null {
+  const questions = splitTopLevelNumberedItems(text)
+    .map(parseQuestionWithRecommendation)
+    .filter((question): question is ExtractedQuestion => question !== null);
+
+  return questions.length > 0 ? { questions } : null;
 }
 
 /**
@@ -199,6 +253,9 @@ class QnAComponent implements Component {
       const q = this.questions[i];
       const a = this.answers[i]?.trim() || "(no answer)";
       parts.push(`Q: ${q.question}`);
+      if (q.recommendedAnswer) {
+        parts.push(`Recommended Answer: ${q.recommendedAnswer}`);
+      }
       if (q.context) {
         parts.push(`> ${q.context}`);
       }
@@ -313,7 +370,9 @@ class QnAComponent implements Component {
 
     // Helper to create a box line
     const boxLine = (content: string, leftPad: number = 2): string => {
-      const paddedContent = " ".repeat(leftPad) + content;
+      const maxContentWidth = Math.max(0, boxWidth - leftPad - 2);
+      const safeContent = truncateToWidth(content, maxContentWidth, "");
+      const paddedContent = " ".repeat(leftPad) + safeContent;
       const contentLen = visibleWidth(paddedContent);
       const rightPad = Math.max(0, boxWidth - contentLen - 2);
       return this.dim("│") + paddedContent + " ".repeat(rightPad) + this.dim("│");
@@ -350,17 +409,29 @@ class QnAComponent implements Component {
     lines.push(padToWidth(boxLine(progressParts.join(" "))));
     lines.push(padToWidth(emptyBoxLine()));
 
+    const renderMarkdown = (markdown: string): void => {
+      const component = new Markdown(markdown, 0, 0, getMarkdownTheme());
+      for (const line of component.render(contentWidth)) {
+        lines.push(padToWidth(boxLine(line)));
+      }
+    };
+
     // Current question
     const q = this.questions[this.currentIndex];
-    const questionText = `${this.bold("Q:")} ${q.question}`;
-    const wrappedQuestion = wrapTextWithAnsi(questionText, contentWidth);
-    for (const line of wrappedQuestion) {
-      lines.push(padToWidth(boxLine(line)));
+    lines.push(padToWidth(boxLine(this.bold("Question:"))));
+    renderMarkdown(q.question);
+
+    // Recommended answer if present
+    if (q.recommendedAnswer) {
+      lines.push(padToWidth(emptyBoxLine()));
+      lines.push(padToWidth(boxLine(this.bold(this.yellow("Recommended Answer:")))));
+      renderMarkdown(q.recommendedAnswer);
     }
 
     // Context if present
     if (q.context) {
       lines.push(padToWidth(emptyBoxLine()));
+      lines.push(padToWidth(boxLine(this.bold("Context:"))));
       const contextText = this.gray(`> ${q.context}`);
       const wrappedContext = wrapTextWithAnsi(contextText, contentWidth - 2);
       for (const line of wrappedContext) {
@@ -446,12 +517,15 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    // Select the best model for extraction (prefer GPT-5.3, then haiku)
-    const extractionModel = await selectExtractionModel(ctx.model, ctx.modelRegistry);
+    const parsedGrillMeQuestions = parseGrillMeQuestions(lastAssistantText);
+    let extractionResult: ExtractionResult | null = parsedGrillMeQuestions;
 
-    // Run extraction with loader UI
-    const extractionResult = await ctx.ui.custom<ExtractionResult | null>(
-      (tui, theme, _kb, done) => {
+    // Run extraction with loader UI when the grill-me template was not detected.
+    if (!extractionResult) {
+      // Select the best model for extraction (prefer GPT-5.3, then haiku)
+      const extractionModel = await selectExtractionModel(ctx.model, ctx.modelRegistry);
+
+      extractionResult = await ctx.ui.custom<ExtractionResult | null>((tui, theme, _kb, done) => {
         const loader = new BorderedLoader(
           tui,
           theme,
@@ -493,8 +567,8 @@ export default function (pi: ExtensionAPI) {
           .catch(() => done(null));
 
         return loader;
-      },
-    );
+      });
+    }
 
     if (extractionResult === null) {
       ctx.ui.notify("Cancelled", "info");
