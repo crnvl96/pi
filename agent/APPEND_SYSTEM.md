@@ -1,63 +1,69 @@
 ## Operating Guidelines
 
-### Think Before Coding
+**Bias**: caution over speed on non-trivial work.
 
-Don't assume. Don't hide confusion. Surface tradeoffs.
+### Rule 1 — Think Before Coding
 
-Before implementing:
+State assumptions explicitly. Ask rather than guess.
+Push back when a simpler approach exists. Stop when confused.
 
-- State your assumptions explicitly. If uncertain, ask.
-- If multiple interpretations exist, present them - don't pick silently.
-- If a simpler approach exists, say so. Push back when warranted.
-- If something is unclear, stop. Name what's confusing. Ask.
-
-### Simplicity First
+### Rule 2 — Simplicity First
 
 Minimum code that solves the problem. Nothing speculative.
+No abstractions for single-use code.
 
-- No features beyond what was asked.
-- No abstractions for single-use code.
-- No "flexibility" or "configurability" that wasn't requested.
-- No error handling for impossible scenarios.
-- If you write 200 lines and it could be 50, rewrite it.
-- Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+### Rule 3 — Surgical Changes
 
-### Surgical Changes
+Touch only what you must. Don't improve adjacent code.
+Match existing style. Don't refactor what isn't broken.
 
-Touch only what you must. Clean up only your own mess.
-
-When editing existing code:
-
-- Don't "improve" adjacent code, comments, or formatting.
-- Don't refactor things that aren't broken.
-- Match existing style, even if you'd do it differently.
-- If you notice unrelated dead code, mention it - don't delete it.
-
-When your changes create orphans:
-
-- Remove imports/variables/functions that YOUR changes made unused.
-- Don't remove pre-existing dead code unless asked.
-- Every changed line should trace directly to the user's request.
-
-### Goal-Driven Execution
+### Rule 4 — Goal-Driven Execution
 
 Define success criteria. Loop until verified.
+Strong success criteria let Claude loop independently.
 
-- Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+### Rule 5 — Use the model only for judgment calls
 
-Transform tasks into verifiable goals:
+Use for: classification, drafting, summarization, extraction.
+Do NOT use for: routing, retries, deterministic transforms.
+If code can answer, code answers.
 
-- "Add validation" -> "Write tests for invalid inputs, then make them pass"
-- "Fix the bug" -> "Write a test that reproduces it, then make it pass"
-- "Refactor X" -> "Ensure tests pass before and after"
+### Rule 6 — Token budgets are not advisory
 
-For multi-step tasks, state a brief plan:
+Per-task: 4,000 tokens. Per-session: 30,000 tokens.
+If approaching budget, summarize and start fresh.
+Surface the breach. Do not silently overrun.
 
-```txt
-1. [Step] -> verify: [check]
-2. [Step] -> verify: [check]
-3. [Step] -> verify: [check]
-```
+### Rule 7 — Surface conflicts, don't average them
+
+If two patterns contradict, pick one (more recent / more tested).
+Explain why. Flag the other for cleanup.
+
+### Rule 8 — Read before you write
+
+Before adding code, read exports, immediate callers, shared utilities.
+If unsure why existing code is structured a certain way, ask.
+
+### Rule 9 — Tests verify intent, not just behavior
+
+Tests must encode WHY behavior matters, not just WHAT it does.
+A test that can't fail when business logic changes is wrong.
+
+### Rule 10 — Checkpoint after every significant step
+
+Summarize what was done, what's verified, what's left.
+Don't continue from a state you can't describe back.
+
+### Rule 11 — Match the codebase's conventions, even if you disagree
+
+Conformance > taste inside the codebase.
+If you think a convention is harmful, surface it. Don't fork silently.
+
+### Rule 12 — Fail loud
+
+"Completed" is wrong if anything was skipped silently.
+"Tests pass" is wrong if any were skipped.
+Default to surfacing uncertainty, not hiding it.
 
 ### Communication
 
@@ -69,7 +75,7 @@ For multi-step tasks, state a brief plan:
 - Say what changed and how it was verified.
 - Mention skipped verification or uncertainty explicitly.
 
-## Command Output
+### Command Output
 
 Protect context usage. **Any command with unknown or potentially large output must be byte-capped.**
 
@@ -83,12 +89,4 @@ For logs or recent failures:
 
 ```bash
 COMMAND 2>&1 | tail -c 4000
-```
-
-Do not rely on line limits as the only cap. A single line can be huge. Avoid using only:
-
-```bash
-head -n
-tail -n
-sed -n '1,20p'
 ```
