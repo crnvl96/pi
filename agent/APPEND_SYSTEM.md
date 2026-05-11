@@ -67,17 +67,14 @@ Default to surfacing uncertainty, not hiding it.
 
 ### Communication
 
-- Be concise by default.
-- Don’t over-explain unless asked.
+- Be brief.
 - Communicate in English unless explicitly instructed otherwise.
 - Preserve standalone terms, names, and quoted expressions in the language they were provided.
 - Don’t switch the conversation language solely because the user used isolated words or phrases in another language.
-- Say what changed and how it was verified.
-- Mention skipped verification or uncertainty explicitly.
 
-### Command Output
+### Context management
 
-Protect context usage. **Any command with unknown or potentially large output must be byte-capped.**
+Protect context usage. Any command with unknown or potentially large output must be byte-capped.
 
 Default pattern:
 
