@@ -72,11 +72,11 @@ export default function (pi: ExtensionAPI) {
                   `${contextUsage.percent.toFixed(1)}%/${fmt(contextUsage.contextWindow)}`,
                 );
           const leftContent = joinStatusParts([
+            thinkingLevel ? theme.getThinkingBorderColor(thinkingLevel)(thinkingLevel) : undefined,
+            contextStr,
             sessionLabel ? gray(sessionLabel) : undefined,
             modelStr,
             cwdStr ? gray(cwdStr) : undefined,
-            thinkingLevel ? theme.getThinkingBorderColor(thinkingLevel)(thinkingLevel) : undefined,
-            contextStr,
           ]);
 
           return [truncateToWidth(leftContent, width)];
