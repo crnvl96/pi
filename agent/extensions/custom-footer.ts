@@ -7,21 +7,36 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { truncateToWidth } from "@earendil-works/pi-tui";
+import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
 const ansi = {
   reset: "\x1b[0m",
   gray: "\x1b[90m",
   cyan: "\x1b[36m",
-  green: "\x1b[32m",
-  yellow: "\x1b[33m",
-  red: "\x1b[31m",
 } as const;
 
 const color = (code: string, text: string) => `${code}${text}${ansi.reset}`;
 const gray = (text: string) => color(ansi.gray, text);
+const cyan = (text: string) => color(ansi.cyan, text);
 const joinStatusParts = (parts: Array<string | undefined>) =>
-  parts.filter((part): part is string => !!part).join(gray(" · "));
+  parts.filter((part): part is string => !!part).join(gray(" ┃ "));
+const lastPathComponent = (cwd: string) => {
+  const home = process.env.HOME?.replace(/\/+$/, "");
+  const normalizedCwd = cwd.replace(/\/+$/, "");
+
+  if (!normalizedCwd) return cwd;
+  if (home && normalizedCwd === home) return "~";
+
+  return normalizedCwd.split("/").pop() || normalizedCwd;
+};
+const contextThinkingLevel = (percent: number) => {
+  if (percent < 15) return "off";
+  if (percent < 30) return "minimal";
+  if (percent < 45) return "low";
+  if (percent < 60) return "medium";
+  if (percent < 75) return "high";
+  return "xhigh";
+};
 
 export default function (pi: ExtensionAPI) {
   let enabled = true;
@@ -43,43 +58,32 @@ export default function (pi: ExtensionAPI) {
             if (n < 10000000) return `${(n / 1000000).toFixed(1)}M`;
             return `${Math.round(n / 1000000)}M`;
           };
-          const sessionLabel =
-            ctx.sessionManager.getSessionName() || ctx.sessionManager.getSessionId();
-          let cwd = ctx.cwd;
-          const home = process.env.HOME;
-          if (home && cwd === home) {
-            cwd = "~/";
-          } else if (home && cwd.startsWith(`${home}/`)) {
-            cwd = `~/${cwd.slice(home.length + 1)}`;
-          }
+          const cwd = lastPathComponent(ctx.cwd);
           const cwdStr = branch ? `${cwd} (${branch})` : cwd;
           const thinkingLevel = pi.getThinkingLevel();
-          const modelStr = ctx.model ? gray(`${ctx.model.provider}/${ctx.model.id}`) : undefined;
+          const modelStr = ctx.model ? cyan(`${ctx.model.provider}/${ctx.model.id}`) : undefined;
           const contextUsage = ctx.getContextUsage();
-          const contextColor =
+          const contextStr =
             contextUsage?.percent === undefined || contextUsage.percent === null
               ? undefined
-              : contextUsage.percent <= 50
-                ? ansi.green
-                : contextUsage.percent < 70
-                  ? ansi.yellow
-                  : ansi.red;
-          const contextStr =
-            contextUsage?.percent === undefined || contextUsage.percent === null || !contextColor
-              ? undefined
-              : color(
-                  contextColor,
+              : theme.getThinkingBorderColor(contextThinkingLevel(contextUsage.percent))(
                   `${contextUsage.percent.toFixed(1)}%/${fmt(contextUsage.contextWindow)}`,
                 );
           const leftContent = joinStatusParts([
             thinkingLevel ? theme.getThinkingBorderColor(thinkingLevel)(thinkingLevel) : undefined,
             contextStr,
-            sessionLabel ? gray(sessionLabel) : undefined,
-            modelStr,
-            cwdStr ? gray(cwdStr) : undefined,
+            cwdStr ? cyan(cwdStr) : undefined,
           ]);
 
-          return [truncateToWidth(leftContent, width)];
+          if (!modelStr) return [truncateToWidth(leftContent, width)];
+
+          const modelWidth = visibleWidth(modelStr);
+          if (modelWidth >= width) return [truncateToWidth(modelStr, width)];
+
+          const left = truncateToWidth(leftContent, Math.max(0, width - modelWidth - 2));
+          const padding = " ".repeat(Math.max(0, width - visibleWidth(left) - modelWidth));
+
+          return [left + padding + modelStr];
         },
       };
     });
