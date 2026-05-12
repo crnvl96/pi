@@ -20,7 +20,7 @@
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
-const DEFAULT_LABEL = "...";
+const DEFAULT_LABEL = "Pondering...";
 
 export default function (pi: ExtensionAPI) {
   let label = DEFAULT_LABEL;

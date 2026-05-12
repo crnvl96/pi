@@ -6,8 +6,8 @@ const PERMISSION_GATE_BASH_PATTERNS = [
   { label: "git clean -fd", regex: /git clean -fd/ },
   { label: "git clean -f", regex: /git clean -f/ },
   { label: "git branch -D", regex: /git branch -D/ },
-  { label: "git checkout \\.", regex: /git checkout \./ },
-  { label: "git restore \\.", regex: /git restore \./ },
+  { label: "git checkout .", regex: /git checkout \./ },
+  { label: "git restore .", regex: /git restore \./ },
   { label: "push --force", regex: /push --force/ },
   { label: "reset --hard", regex: /reset --hard/ },
 ];
