@@ -30,11 +30,11 @@ const lastPathComponent = (cwd: string) => {
   return normalizedCwd.split("/").pop() || normalizedCwd;
 };
 const contextThinkingLevel = (percent: number) => {
-  if (percent < 15) return "off";
-  if (percent < 30) return "minimal";
-  if (percent < 45) return "low";
-  if (percent < 60) return "medium";
-  if (percent < 75) return "high";
+  if (percent < 10) return "off";
+  if (percent < 20) return "minimal";
+  if (percent < 30) return "low";
+  if (percent < 40) return "medium";
+  if (percent < 50) return "high";
   return "xhigh";
 };
 

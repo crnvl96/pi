@@ -16,17 +16,17 @@ import type {
   ExtensionContext,
   ModelRegistry,
 } from "@earendil-works/pi-coding-agent";
-import { BorderedLoader } from "@earendil-works/pi-coding-agent";
+import { BorderedLoader, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
 import {
   type Component,
   Editor,
   type EditorTheme,
   Key,
+  Markdown,
   matchesKey,
   truncateToWidth,
   type TUI,
   visibleWidth,
-  wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 
 // Structured output format for question extraction
@@ -55,7 +55,9 @@ Rules:
 - Extract all questions that require user input
 - Keep questions in the order they appeared
 - Be concise with question text
-- Include context only when it provides essential information for answering
+- If questions are organized as a numbered list, the question is only the text on the numbered line after the number
+- For numbered-list questions, preserve all context below each question exactly as written until the next numbered question
+- Preserve context markdown verbatim, including blockquotes, lists, code fences, and comments
 - If no questions are found, return {"questions": []}
 
 Example output:
@@ -123,17 +125,94 @@ function parseExtractionResult(text: string): ExtractionResult | null {
   }
 }
 
+function trimBlankBoundaryLines(lines: string[]): string[] {
+  let start = 0;
+  let end = lines.length;
+
+  while (start < end && lines[start].trim() === "") {
+    start++;
+  }
+  while (end > start && lines[end - 1].trim() === "") {
+    end--;
+  }
+
+  return lines.slice(start, end);
+}
+
+/**
+ * Deterministically parse the expected numbered question format:
+ *
+ * 1. Question text
+ * Context markdown until the next numbered question
+ * 2. Next question
+ *
+ * Markdown code fences are respected so numbered lines inside fenced code are not split.
+ */
+function parseNumberedQuestionList(text: string): ExtractionResult | null {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const questions: Array<{ lineIndex: number; number: number; question: string }> = [];
+  let fence: { char: "`" | "~"; length: number } | null = null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    if (!fence) {
+      const numberedMatch = line.match(/^(\d+)[.)][ \t]+(.+?)\s*$/);
+      if (numberedMatch) {
+        const number = Number(numberedMatch[1]);
+        const previous = questions[questions.length - 1];
+        if ((!previous && number === 1) || (previous && number === previous.number + 1)) {
+          questions.push({ lineIndex: i, number, question: numberedMatch[2].trim() });
+        }
+      }
+
+      const openFence = line.match(/^ {0,3}(`{3,}|~{3,})/);
+      if (openFence) {
+        const marker = openFence[1];
+        fence = { char: marker[0] as "`" | "~", length: marker.length };
+      }
+      continue;
+    }
+
+    const closeFencePattern = new RegExp(`^ {0,3}\\${fence.char}{${fence.length},}`);
+    if (closeFencePattern.test(line)) {
+      fence = null;
+    }
+  }
+
+  if (questions.length === 0) {
+    return null;
+  }
+
+  return {
+    questions: questions.map((question, index) => {
+      const nextQuestion = questions[index + 1];
+      const contextLines = trimBlankBoundaryLines(
+        lines.slice(question.lineIndex + 1, nextQuestion?.lineIndex ?? lines.length),
+      );
+      return {
+        question: question.question,
+        context: contextLines.length > 0 ? contextLines.join("\n") : undefined,
+      };
+    }),
+  };
+}
+
 /**
  * Interactive Q&A component for answering extracted questions
  */
 class QnAComponent implements Component {
   private questions: ExtractedQuestion[];
   private answers: string[];
+  private contextScrollOffsets: number[];
   private currentIndex: number = 0;
   private editor: Editor;
   private tui: TUI;
   private onDone: (result: string | null) => void;
   private showingConfirmation: boolean = false;
+  private readonly maxContextLines = 12;
+  private lastContextLineCount: number = 0;
+  private lastContextViewportLines: number = 0;
 
   // Cache
   private cachedWidth?: number;
@@ -150,6 +229,7 @@ class QnAComponent implements Component {
   constructor(questions: ExtractedQuestion[], tui: TUI, onDone: (result: string | null) => void) {
     this.questions = questions;
     this.answers = questions.map(() => "");
+    this.contextScrollOffsets = questions.map(() => 0);
     this.tui = tui;
     this.onDone = onDone;
 
@@ -192,6 +272,28 @@ class QnAComponent implements Component {
     this.invalidate();
   }
 
+  private canScrollContext(): boolean {
+    return this.lastContextLineCount > this.lastContextViewportLines;
+  }
+
+  private scrollContext(delta: number): boolean {
+    if (!this.canScrollContext()) return false;
+
+    const maxScroll = Math.max(0, this.lastContextLineCount - this.lastContextViewportLines);
+    const current = this.contextScrollOffsets[this.currentIndex] ?? 0;
+    const next = Math.max(0, Math.min(maxScroll, current + delta));
+    if (next === current) return false;
+
+    this.contextScrollOffsets[this.currentIndex] = next;
+    this.invalidate();
+    return true;
+  }
+
+  private renderMarkdown(text: string, width: number): string[] {
+    const markdown = new Markdown(text, 0, 0, getMarkdownTheme());
+    return markdown.render(width);
+  }
+
   private submit(): void {
     this.saveCurrentAnswer();
 
@@ -202,7 +304,7 @@ class QnAComponent implements Component {
       const a = this.answers[i]?.trim() || "(no answer)";
       parts.push(`Q: ${q.question}`);
       if (q.context) {
-        parts.push(`> ${q.context}`);
+        parts.push(`Context:\n${q.context}`);
       }
       parts.push(`A: ${a}`);
       parts.push("");
@@ -262,8 +364,29 @@ class QnAComponent implements Component {
       return;
     }
 
-    // Arrow up/down for question navigation when editor is empty
-    // (Editor handles its own cursor navigation when there's content)
+    // Scroll long markdown context. Plain arrows work before the user starts an answer;
+    // PageUp/PageDown work at any time and do not interfere with answer editing.
+    if (
+      (matchesKey(data, Key.up) && this.editor.getText() === "") ||
+      matchesKey(data, Key.pageUp)
+    ) {
+      if (this.scrollContext(matchesKey(data, Key.pageUp) ? -this.maxContextLines : -1)) {
+        this.tui.requestRender();
+        return;
+      }
+    }
+    if (
+      (matchesKey(data, Key.down) && this.editor.getText() === "") ||
+      matchesKey(data, Key.pageDown)
+    ) {
+      if (this.scrollContext(matchesKey(data, Key.pageDown) ? this.maxContextLines : 1)) {
+        this.tui.requestRender();
+        return;
+      }
+    }
+
+    // Arrow up/down for question navigation when editor is empty and the context
+    // cannot scroll further. Editor handles cursor navigation once there is content.
     if (matchesKey(data, Key.up) && this.editor.getText() === "") {
       if (this.currentIndex > 0) {
         this.navigateTo(this.currentIndex - 1);
@@ -352,20 +475,44 @@ class QnAComponent implements Component {
     lines.push(padToWidth(boxLine(progressParts.join(" "))));
     lines.push(padToWidth(emptyBoxLine()));
 
-    // Current question
+    // Current question. Render as Markdown so inline code, emphasis, links,
+    // lists, and other formatting stay readable.
     const q = this.questions[this.currentIndex];
-    const questionText = `${this.bold("Q:")} ${q.question}`;
-    const wrappedQuestion = wrapTextWithAnsi(questionText, contentWidth);
-    for (const line of wrappedQuestion) {
+    const questionLines = this.renderMarkdown(q.question, contentWidth);
+    for (const line of questionLines) {
       lines.push(padToWidth(boxLine(line)));
     }
 
-    // Context if present
+    // Context if present. Render as Markdown so blockquotes, lists, code fences,
+    // tables, and syntax highlighting stay rich and readable.
+    this.lastContextLineCount = 0;
+    this.lastContextViewportLines = 0;
     if (q.context) {
       lines.push(padToWidth(emptyBoxLine()));
-      const contextText = this.gray(`> ${q.context}`);
-      const wrappedContext = wrapTextWithAnsi(contextText, contentWidth - 2);
-      for (const line of wrappedContext) {
+
+      const contextLines = this.renderMarkdown(q.context, contentWidth);
+      this.lastContextLineCount = contextLines.length;
+      this.lastContextViewportLines = Math.min(this.maxContextLines, contextLines.length);
+
+      const maxScroll = Math.max(0, contextLines.length - this.lastContextViewportLines);
+      const scrollOffset = Math.max(
+        0,
+        Math.min(maxScroll, this.contextScrollOffsets[this.currentIndex] ?? 0),
+      );
+      this.contextScrollOffsets[this.currentIndex] = scrollOffset;
+
+      if (contextLines.length > this.lastContextViewportLines) {
+        const scrollInfo = `${this.dim(
+          `(${scrollOffset + 1}-${scrollOffset + this.lastContextViewportLines}/${contextLines.length})`,
+        )} ${this.dim("↑/↓ or PgUp/PgDn")}`;
+        lines.push(padToWidth(boxLine(truncateToWidth(scrollInfo, contentWidth))));
+      }
+
+      const visibleContextLines = contextLines.slice(
+        scrollOffset,
+        scrollOffset + this.lastContextViewportLines,
+      );
+      for (const line of visibleContextLines) {
         lines.push(padToWidth(boxLine(line)));
       }
     }
@@ -396,7 +543,10 @@ class QnAComponent implements Component {
       lines.push(padToWidth(boxLine(truncateToWidth(confirmMsg, contentWidth))));
     } else {
       lines.push(padToWidth(this.dim("├" + horizontalLine(boxWidth - 2) + "┤")));
-      const controls = `${this.dim("Tab/Enter")} next · ${this.dim("Shift+Tab")} prev · ${this.dim("Shift+Enter")} newline · ${this.dim("Esc")} cancel`;
+      const scrollControls = this.canScrollContext()
+        ? ` · ${this.dim("↑/↓ PgUp/PgDn")} scroll`
+        : "";
+      const controls = `${this.dim("Tab/Enter")} next · ${this.dim("Shift+Tab")} prev · ${this.dim("Shift+Enter")} newline${scrollControls} · ${this.dim("Esc")} cancel`;
       lines.push(padToWidth(boxLine(truncateToWidth(controls, contentWidth))));
     }
     lines.push(padToWidth(this.dim("╰" + horizontalLine(boxWidth - 2) + "╯")));
@@ -448,12 +598,14 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    // Select the best model for extraction (prefer GPT-5.3, then haiku)
-    const extractionModel = await selectExtractionModel(ctx.model, ctx.modelRegistry);
+    let extractionResult = parseNumberedQuestionList(lastAssistantText);
 
-    // Run extraction with loader UI
-    const extractionResult = await ctx.ui.custom<ExtractionResult | null>(
-      (tui, theme, _kb, done) => {
+    if (!extractionResult) {
+      // Select the best model for extraction (prefer GPT-5.3, then haiku)
+      const extractionModel = await selectExtractionModel(ctx.model, ctx.modelRegistry);
+
+      // Run extraction with loader UI
+      extractionResult = await ctx.ui.custom<ExtractionResult | null>((tui, theme, _kb, done) => {
         const loader = new BorderedLoader(
           tui,
           theme,
@@ -495,8 +647,8 @@ export default function (pi: ExtensionAPI) {
           .catch(() => done(null));
 
         return loader;
-      },
-    );
+      });
+    }
 
     if (extractionResult === null) {
       ctx.ui.notify("Cancelled", "info");
