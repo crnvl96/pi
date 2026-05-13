@@ -27,6 +27,7 @@ import {
   truncateToWidth,
   type TUI,
   visibleWidth,
+  wrapTextWithAnsi,
 } from "@earendil-works/pi-tui";
 
 // Structured output format for question extraction
@@ -39,7 +40,7 @@ interface ExtractionResult {
   questions: ExtractedQuestion[];
 }
 
-const SYSTEM_PROMPT = `You are a question extractor. Given text from a conversation, extract any questions that need answering.
+const SYSTEM_PROMPT = `You are a question extractor. Given text from a conversation, extract questions and the rich context that helps answer each question.
 
 Output a JSON object with this structure:
 {
@@ -55,12 +56,32 @@ Rules:
 - Extract all questions that require user input
 - Keep questions in the order they appeared
 - Be concise with question text
-- If questions are organized as a numbered list, the question is only the text on the numbered line after the number
-- For numbered-list questions, preserve all context below each question exactly as written until the next numbered question
-- Preserve context markdown verbatim, including blockquotes, lists, code fences, and comments
+- Include context only when it helps answer the question
+- If the assistant provided a recommended answer, sample answer, example answer, rationale, table, citation, snippet, or code block for a question, include the complete related content in context
+- Preserve rich markdown in context exactly enough to render correctly: bullet/numbered lists, blockquotes, fenced code blocks, inline code, tables, links, citations, and quotes
+- For numbered questionnaire-style text, associate each "Recommended answer" section with the question immediately before it
+- Do not split recommended answers into separate questions
+- Do not flatten markdown into one line
 - If no questions are found, return {"questions": []}
 
-Example output:
+Input pattern examples:
+1. **What is your main goal right now?**
+   **Recommended answer:** My main goal is to improve consistency.
+
+2. **How do you prioritize tasks?**
+   **Recommended answer:**
+   - Urgent and important first
+   - High-impact work next
+
+3. **What does success look like?**
+   **Recommended answer:**
+   \`\`\`text
+   Success = clear outcome + measurable result + reasonable timeline
+   \`\`\`
+
+For those patterns, extract the question text and put the full recommended answer markdown in context.
+
+Example JSON output:
 {
   "questions": [
     {
@@ -68,7 +89,15 @@ Example output:
       "context": "We can only configure MySQL and PostgreSQL because of what is implemented."
     },
     {
-      "question": "Should we use TypeScript or JavaScript?"
+      "question": "Should we use TypeScript or JavaScript?",
+      "context": "**Recommended answer:** Go with TypeScript due to its typing system which improves reliability."
+    },
+    {
+      "question": "Should we implement tests?",
+      "context": "**My recommendation:**\n- Yes\n- Mock integrations and SDKs"
+    },
+    {
+      "question": "The API call should be sync or async?"
     }
   ]
 }`;
@@ -76,6 +105,9 @@ Example output:
 const CODEX_MODEL_ID = "gpt-5.4-mini";
 const HAIKU_MODEL_ID = "claude-haiku-4-5";
 
+/**
+ * Prefer GPT-5.3 for extraction when available, otherwise fallback to haiku or the current model.
+ */
 async function selectExtractionModel(
   currentModel: Model<Api>,
   modelRegistry: ModelRegistry,
@@ -105,24 +137,47 @@ async function selectExtractionModel(
  * Parse the JSON response from the LLM
  */
 function parseExtractionResult(text: string): ExtractionResult | null {
-  try {
-    // Try to find JSON in the response (it might be wrapped in markdown code blocks)
-    let jsonStr = text;
+  const candidates: string[] = [];
+  const trimmed = text.trim();
+  candidates.push(trimmed);
 
-    // Remove markdown code block if present
-    const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (jsonMatch) {
-      jsonStr = jsonMatch[1].trim();
-    }
-
-    const parsed = JSON.parse(jsonStr);
-    if (parsed && Array.isArray(parsed.questions)) {
-      return parsed as ExtractionResult;
-    }
-    return null;
-  } catch {
-    return null;
+  const fencedMatch = trimmed.match(/^```(?:json)?[ \t]*\n([\s\S]*)\n```$/);
+  if (fencedMatch) {
+    candidates.push(fencedMatch[1].trim());
   }
+
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace > firstBrace) {
+    candidates.push(trimmed.slice(firstBrace, lastBrace + 1));
+  }
+
+  for (const jsonStr of candidates) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      if (parsed && Array.isArray(parsed.questions)) {
+        const questions = parsed.questions
+          .map((item: unknown): ExtractedQuestion | null => {
+            if (!item || typeof item !== "object") return null;
+            const candidate = item as { question?: unknown; context?: unknown };
+            if (typeof candidate.question !== "string" || candidate.question.trim() === "") {
+              return null;
+            }
+            const question: ExtractedQuestion = { question: candidate.question.trim() };
+            if (typeof candidate.context === "string" && candidate.context.trim() !== "") {
+              question.context = candidate.context.trim();
+            }
+            return question;
+          })
+          .filter((item: ExtractedQuestion | null): item is ExtractedQuestion => item !== null);
+        return { questions };
+      }
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  return null;
 }
 
 function trimBlankBoundaryLines(lines: string[]): string[] {
@@ -139,14 +194,17 @@ function trimBlankBoundaryLines(lines: string[]): string[] {
   return lines.slice(start, end);
 }
 
+function normalizeQuestionText(text: string): string {
+  return text
+    .trim()
+    .replace(/^#+\s+/, "")
+    .replace(/^\*\*(.+)\*\*$/, "$1")
+    .replace(/^__(.+)__$/, "$1");
+}
+
 /**
- * Deterministically parse the expected numbered question format:
- *
- * 1. Question text
- * Context markdown until the next numbered question
- * 2. Next question
- *
- * Markdown code fences are respected so numbered lines inside fenced code are not split.
+ * Deterministically parse numbered questionnaire output and preserve all
+ * markdown context below each question until the next numbered question.
  */
 function parseNumberedQuestionList(text: string): ExtractionResult | null {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
@@ -162,7 +220,11 @@ function parseNumberedQuestionList(text: string): ExtractionResult | null {
         const number = Number(numberedMatch[1]);
         const previous = questions[questions.length - 1];
         if ((!previous && number === 1) || (previous && number === previous.number + 1)) {
-          questions.push({ lineIndex: i, number, question: numberedMatch[2].trim() });
+          questions.push({
+            lineIndex: i,
+            number,
+            question: normalizeQuestionText(numberedMatch[2]),
+          });
         }
       }
 
@@ -204,17 +266,13 @@ function parseNumberedQuestionList(text: string): ExtractionResult | null {
 class QnAComponent implements Component {
   private questions: ExtractedQuestion[];
   private answers: string[];
-  private additionalNotes: string = "";
-  private contextScrollOffsets: number[];
+  private notes: string = "";
   private currentIndex: number = 0;
   private editor: Editor;
   private tui: TUI;
   private onDone: (result: string | null) => void;
-  private showingNotesScreen: boolean = false;
   private showingConfirmation: boolean = false;
-  private readonly maxContextLines = 12;
-  private lastContextLineCount: number = 0;
-  private lastContextViewportLines: number = 0;
+  private bodyScroll: number = 0;
 
   // Cache
   private cachedWidth?: number;
@@ -231,7 +289,6 @@ class QnAComponent implements Component {
   constructor(questions: ExtractedQuestion[], tui: TUI, onDone: (result: string | null) => void) {
     this.questions = questions;
     this.answers = questions.map(() => "");
-    this.contextScrollOffsets = questions.map(() => 0);
     this.tui = tui;
     this.onDone = onDone;
 
@@ -257,9 +314,17 @@ class QnAComponent implements Component {
     };
   }
 
-  private saveCurrentEditorText(): void {
-    if (this.showingNotesScreen) {
-      this.additionalNotes = this.editor.getText();
+  private get totalScreens(): number {
+    return this.questions.length + 1;
+  }
+
+  private isNotesScreen(): boolean {
+    return this.currentIndex === this.questions.length;
+  }
+
+  private saveCurrentAnswer(): void {
+    if (this.isNotesScreen()) {
+      this.notes = this.editor.getText();
       return;
     }
 
@@ -267,45 +332,16 @@ class QnAComponent implements Component {
   }
 
   private navigateTo(index: number): void {
-    if (index < 0 || index >= this.questions.length) return;
-    this.saveCurrentEditorText();
-    this.showingNotesScreen = false;
+    if (index < 0 || index >= this.totalScreens) return;
+    this.saveCurrentAnswer();
     this.currentIndex = index;
-    this.editor.setText(this.answers[index] || "");
+    this.bodyScroll = 0;
+    this.editor.setText(this.isNotesScreen() ? this.notes : this.answers[index] || "");
     this.invalidate();
-  }
-
-  private navigateToNotes(): void {
-    this.saveCurrentEditorText();
-    this.showingNotesScreen = true;
-    this.editor.setText(this.additionalNotes);
-    this.invalidate();
-  }
-
-  private canScrollContext(): boolean {
-    return this.lastContextLineCount > this.lastContextViewportLines;
-  }
-
-  private scrollContext(delta: number): boolean {
-    if (!this.canScrollContext()) return false;
-
-    const maxScroll = Math.max(0, this.lastContextLineCount - this.lastContextViewportLines);
-    const current = this.contextScrollOffsets[this.currentIndex] ?? 0;
-    const next = Math.max(0, Math.min(maxScroll, current + delta));
-    if (next === current) return false;
-
-    this.contextScrollOffsets[this.currentIndex] = next;
-    this.invalidate();
-    return true;
-  }
-
-  private renderMarkdown(text: string, width: number): string[] {
-    const markdown = new Markdown(text, 0, 0, getMarkdownTheme());
-    return markdown.render(width);
   }
 
   private submit(): void {
-    this.saveCurrentEditorText();
+    this.saveCurrentAnswer();
 
     // Build the response text
     const parts: string[] = [];
@@ -320,11 +356,10 @@ class QnAComponent implements Component {
       parts.push("");
     }
 
-    const notes = this.additionalNotes.trim();
+    const notes = this.notes.trim();
     if (notes.length > 0) {
-      parts.push("Additional notes:");
+      parts.push("Notes and observations:");
       parts.push(notes);
-      parts.push("");
     }
 
     this.onDone(parts.join("\n").trim());
@@ -332,6 +367,16 @@ class QnAComponent implements Component {
 
   private cancel(): void {
     this.onDone(null);
+  }
+
+  private renderContextMarkdown(context: string, width: number): string[] {
+    const markdown = new Markdown(context, 0, 0, getMarkdownTheme());
+    return markdown.render(width);
+  }
+
+  private scrollBody(delta: number): void {
+    this.bodyScroll = Math.max(0, this.bodyScroll + delta);
+    this.invalidate();
   }
 
   invalidate(): void {
@@ -365,64 +410,44 @@ class QnAComponent implements Component {
       return;
     }
 
-    // Tab / Shift+Tab for navigation
-    if (matchesKey(data, Key.tab)) {
-      if (this.showingNotesScreen) {
-        this.saveCurrentEditorText();
-        this.showingConfirmation = true;
-        this.invalidate();
-      } else if (this.currentIndex < this.questions.length - 1) {
-        this.navigateTo(this.currentIndex + 1);
-      } else {
-        this.navigateToNotes();
-      }
+    if (matchesKey(data, Key.pageUp)) {
+      this.scrollBody(-3);
       this.tui.requestRender();
       return;
     }
-    if (matchesKey(data, Key.shift("tab"))) {
-      if (this.showingNotesScreen) {
-        this.navigateTo(this.questions.length - 1);
+    if (matchesKey(data, Key.pageDown)) {
+      this.scrollBody(3);
+      this.tui.requestRender();
+      return;
+    }
+
+    // Tab / Shift+Tab for navigation
+    if (matchesKey(data, Key.tab)) {
+      if (this.currentIndex < this.totalScreens - 1) {
+        this.navigateTo(this.currentIndex + 1);
         this.tui.requestRender();
-      } else if (this.currentIndex > 0) {
+      }
+      return;
+    }
+    if (matchesKey(data, Key.shift("tab"))) {
+      if (this.currentIndex > 0) {
         this.navigateTo(this.currentIndex - 1);
         this.tui.requestRender();
       }
       return;
     }
 
-    // Scroll long markdown context. Plain arrows work before the user starts an answer;
-    // PageUp/PageDown work on question screens and do not interfere with answer editing.
-    if (
-      !this.showingNotesScreen &&
-      ((matchesKey(data, Key.up) && this.editor.getText() === "") || matchesKey(data, Key.pageUp))
-    ) {
-      if (this.scrollContext(matchesKey(data, Key.pageUp) ? -this.maxContextLines : -1)) {
-        this.tui.requestRender();
-        return;
-      }
-    }
-    if (
-      !this.showingNotesScreen &&
-      ((matchesKey(data, Key.down) && this.editor.getText() === "") ||
-        matchesKey(data, Key.pageDown))
-    ) {
-      if (this.scrollContext(matchesKey(data, Key.pageDown) ? this.maxContextLines : 1)) {
-        this.tui.requestRender();
-        return;
-      }
-    }
-
-    // Arrow up/down for question navigation when editor is empty and the context
-    // cannot scroll further. Editor handles cursor navigation once there is content.
-    if (!this.showingNotesScreen && matchesKey(data, Key.up) && this.editor.getText() === "") {
+    // Arrow up/down for question navigation when editor is empty
+    // (Editor handles its own cursor navigation when there's content)
+    if (matchesKey(data, Key.up) && this.editor.getText() === "") {
       if (this.currentIndex > 0) {
         this.navigateTo(this.currentIndex - 1);
         this.tui.requestRender();
         return;
       }
     }
-    if (!this.showingNotesScreen && matchesKey(data, Key.down) && this.editor.getText() === "") {
-      if (this.currentIndex < this.questions.length - 1) {
+    if (matchesKey(data, Key.down) && this.editor.getText() === "") {
+      if (this.currentIndex < this.totalScreens - 1) {
         this.navigateTo(this.currentIndex + 1);
         this.tui.requestRender();
         return;
@@ -430,16 +455,14 @@ class QnAComponent implements Component {
     }
 
     // Handle Enter ourselves (editor's submit is disabled)
-    // Plain Enter moves to the next question, then notes, then confirmation.
+    // Plain Enter moves to next screen or shows confirmation on the notes screen
     // Shift+Enter adds a newline (handled by editor)
     if (matchesKey(data, Key.enter) && !matchesKey(data, Key.shift("enter"))) {
-      this.saveCurrentEditorText();
-      if (this.showingNotesScreen) {
-        this.showingConfirmation = true;
-      } else if (this.currentIndex < this.questions.length - 1) {
+      this.saveCurrentAnswer();
+      if (this.currentIndex < this.totalScreens - 1) {
         this.navigateTo(this.currentIndex + 1);
       } else {
-        this.navigateToNotes();
+        this.showingConfirmation = true;
       }
       this.invalidate();
       this.tui.requestRender();
@@ -458,16 +481,18 @@ class QnAComponent implements Component {
     }
 
     const lines: string[] = [];
-    const boxWidth = Math.max(2, width);
-    const contentWidth = Math.max(1, boxWidth - 4); // 2 chars padding on each side
+    const maxLines = Math.max(1, Math.floor(this.tui.terminal.rows * 0.5));
+    const boxWidth = Math.max(20, width);
+    const contentWidth = Math.max(10, boxWidth - 4); // 2 chars padding on each side
 
     // Helper to create horizontal lines (dim the whole thing at once)
     const horizontalLine = (count: number) => "─".repeat(Math.max(0, count));
 
     // Helper to create a box line
     const boxLine = (content: string, leftPad: number = 2): string => {
-      const availableWidth = Math.max(0, boxWidth - leftPad - 2);
-      const paddedContent = " ".repeat(leftPad) + truncateToWidth(content, availableWidth);
+      const maxContentWidth = Math.max(0, boxWidth - leftPad - 2);
+      const clippedContent = truncateToWidth(content, maxContentWidth, "");
+      const paddedContent = " ".repeat(leftPad) + clippedContent;
       const contentLen = visibleWidth(paddedContent);
       const rightPad = Math.max(0, boxWidth - contentLen - 2);
       return this.dim("│") + paddedContent + " ".repeat(rightPad) + this.dim("│");
@@ -477,25 +502,24 @@ class QnAComponent implements Component {
       return this.dim("│") + " ".repeat(Math.max(0, boxWidth - 2)) + this.dim("│");
     };
 
-    const padToWidth = (line: string): string => {
-      const len = visibleWidth(line);
-      return line + " ".repeat(Math.max(0, width - len));
+    const pushLine = (line: string): void => {
+      lines.push(truncateToWidth(line, width, ""));
     };
 
     // Title
-    lines.push(padToWidth(this.dim("╭" + horizontalLine(boxWidth - 2) + "╮")));
-    const totalSteps = this.questions.length + 1;
-    const currentStep = this.showingNotesScreen ? totalSteps : this.currentIndex + 1;
-    const titleText = this.showingNotesScreen ? "Additional notes" : "Questions";
-    const title = `${this.bold(this.cyan(titleText))} ${this.dim(`(${currentStep}/${totalSteps})`)}`;
-    lines.push(padToWidth(boxLine(title)));
-    lines.push(padToWidth(this.dim("├" + horizontalLine(boxWidth - 2) + "┤")));
+    pushLine(this.dim("╭" + horizontalLine(boxWidth - 2) + "╮"));
+    const titleLabel = this.isNotesScreen() ? "Notes & observations" : "Questions";
+    const title = `${this.bold(this.cyan(titleLabel))} ${this.dim(`(${this.currentIndex + 1}/${this.totalScreens})`)}`;
+    pushLine(boxLine(title));
+    pushLine(this.dim("├" + horizontalLine(boxWidth - 2) + "┤"));
 
     // Progress indicator
     const progressParts: string[] = [];
-    for (let i = 0; i < this.questions.length; i++) {
-      const answered = (this.answers[i]?.trim() || "").length > 0;
-      const current = !this.showingNotesScreen && i === this.currentIndex;
+    for (let i = 0; i < this.totalScreens; i++) {
+      const answered = i === this.questions.length
+        ? this.notes.trim().length > 0
+        : (this.answers[i]?.trim() || "").length > 0;
+      const current = i === this.currentIndex;
       if (current) {
         progressParts.push(this.cyan("●"));
       } else if (answered) {
@@ -504,107 +528,86 @@ class QnAComponent implements Component {
         progressParts.push(this.dim("○"));
       }
     }
-    const hasNotes = this.additionalNotes.trim().length > 0;
-    progressParts.push(
-      this.showingNotesScreen ? this.cyan("✎") : hasNotes ? this.green("✎") : this.dim("✎"),
-    );
-    lines.push(padToWidth(boxLine(progressParts.join(" "))));
-    lines.push(padToWidth(emptyBoxLine()));
+    pushLine(boxLine(progressParts.join(" ")));
+    pushLine(emptyBoxLine());
 
-    this.lastContextLineCount = 0;
-    this.lastContextViewportLines = 0;
-    if (this.showingNotesScreen) {
-      const notePromptLines = this.renderMarkdown(
-        "Add any optional notes to send with your answers. Leave this blank if there is nothing to add.",
-        contentWidth,
+    const bodyLines: string[] = [];
+    if (this.isNotesScreen()) {
+      bodyLines.push(this.bold("Optional notes and observations"));
+      bodyLines.push("");
+      bodyLines.push(
+        "Add any extra notes to send with the answers. Leave this blank to send only the answers.",
       );
-      for (const line of notePromptLines) {
-        lines.push(padToWidth(boxLine(line)));
-      }
     } else {
-      // Current question. Render as Markdown so inline code, emphasis, links,
-      // lists, and other formatting stay readable.
       const q = this.questions[this.currentIndex];
-      const questionLines = this.renderMarkdown(q.question, contentWidth);
-      for (const line of questionLines) {
-        lines.push(padToWidth(boxLine(line)));
-      }
+      const questionText = `${this.bold("Q:")} ${q.question}`;
+      bodyLines.push(...wrapTextWithAnsi(questionText, contentWidth));
 
-      // Context if present. Render as Markdown so blockquotes, lists, code fences,
-      // tables, and syntax highlighting stay rich and readable.
       if (q.context) {
-        lines.push(padToWidth(emptyBoxLine()));
-
-        const contextLines = this.renderMarkdown(q.context, contentWidth);
-        this.lastContextLineCount = contextLines.length;
-        this.lastContextViewportLines = Math.min(this.maxContextLines, contextLines.length);
-
-        const maxScroll = Math.max(0, contextLines.length - this.lastContextViewportLines);
-        const scrollOffset = Math.max(
-          0,
-          Math.min(maxScroll, this.contextScrollOffsets[this.currentIndex] ?? 0),
-        );
-        this.contextScrollOffsets[this.currentIndex] = scrollOffset;
-
-        if (contextLines.length > this.lastContextViewportLines) {
-          const scrollInfo = `${this.dim(
-            `(${scrollOffset + 1}-${scrollOffset + this.lastContextViewportLines}/${contextLines.length})`,
-          )} ${this.dim("↑/↓ or PgUp/PgDn")}`;
-          lines.push(padToWidth(boxLine(truncateToWidth(scrollInfo, contentWidth))));
-        }
-
-        const visibleContextLines = contextLines.slice(
-          scrollOffset,
-          scrollOffset + this.lastContextViewportLines,
-        );
-        for (const line of visibleContextLines) {
-          lines.push(padToWidth(boxLine(line)));
-        }
+        bodyLines.push("");
+        bodyLines.push(this.gray("Context / recommended answer:"));
+        bodyLines.push(...this.renderContextMarkdown(q.context, contentWidth));
       }
     }
 
-    lines.push(padToWidth(emptyBoxLine()));
-
-    // Render the editor component (multi-line input) with padding
-    // Skip the first and last lines (editor's own border lines)
-    const editorPrefixText = this.showingNotesScreen ? "Notes: " : "A: ";
-    const editorPrefix = this.bold(editorPrefixText);
-    const editorWidth = Math.max(1, contentWidth - 4 - visibleWidth(editorPrefixText));
-    const editorLines = this.editor.render(editorWidth);
-    for (let i = 1; i < editorLines.length - 1; i++) {
+    // Render the editor component (multi-line input) with padding.
+    // Skip the first and last lines (editor's own border lines).
+    const answerPrefix = this.isNotesScreen() ? this.bold("N: ") : this.bold("A: ");
+    const editorWidth = Math.max(10, contentWidth - 7); // Extra padding + space for "A: " / "N: "
+    const renderedEditorLines = this.editor.render(editorWidth);
+    const editorBoxLines: string[] = [];
+    editorBoxLines.push(emptyBoxLine());
+    for (let i = 1; i < renderedEditorLines.length - 1; i++) {
       if (i === 1) {
-        // First content line gets the input prefix
-        lines.push(padToWidth(boxLine(editorPrefix + editorLines[i])));
+        editorBoxLines.push(boxLine(answerPrefix + renderedEditorLines[i]));
       } else {
-        // Subsequent lines get padding to align with the first line
-        lines.push(
-          padToWidth(boxLine(" ".repeat(visibleWidth(editorPrefixText)) + editorLines[i])),
+        editorBoxLines.push(boxLine("   " + renderedEditorLines[i]));
+      }
+    }
+    editorBoxLines.push(emptyBoxLine());
+
+    const footerLines: string[] = [];
+    footerLines.push(this.dim("├" + horizontalLine(boxWidth - 2) + "┤"));
+    if (this.showingConfirmation) {
+      const confirmMsg = `${this.yellow("Submit all answers?")} ${this.dim("(Enter/y to confirm, Esc/n to cancel)")}`;
+      footerLines.push(boxLine(confirmMsg));
+    } else {
+      const controls = `${this.dim("Tab/Enter")} next · ${this.dim("Shift+Tab")} prev · ${this.dim("PgUp/PgDn")} scroll context · ${this.dim("Shift+Enter")} newline · ${this.dim("Esc")} cancel`;
+      footerLines.push(boxLine(controls));
+    }
+    footerLines.push(this.dim("╰" + horizontalLine(boxWidth - 2) + "╯"));
+
+    const availableBodyLines = Math.max(
+      1,
+      maxLines - lines.length - editorBoxLines.length - footerLines.length,
+    );
+    const maxBodyScroll = Math.max(0, bodyLines.length - availableBodyLines);
+    this.bodyScroll = Math.min(this.bodyScroll, maxBodyScroll);
+    const visibleBodyLines = bodyLines.slice(
+      this.bodyScroll,
+      this.bodyScroll + availableBodyLines,
+    );
+    if (bodyLines.length > availableBodyLines && visibleBodyLines.length > 0) {
+      if (this.bodyScroll > 0) {
+        visibleBodyLines[0] = this.dim(`↑ ${this.bodyScroll} more line(s)`);
+      }
+      if (this.bodyScroll < maxBodyScroll) {
+        const remaining = maxBodyScroll - this.bodyScroll;
+        visibleBodyLines[visibleBodyLines.length - 1] = this.dim(
+          `↓ ${remaining} more line(s) · PgDn to scroll`,
         );
       }
     }
 
-    lines.push(padToWidth(emptyBoxLine()));
-
-    // Confirmation dialog or footer with controls
-    if (this.showingConfirmation) {
-      lines.push(padToWidth(this.dim("├" + horizontalLine(boxWidth - 2) + "┤")));
-      const confirmMsg = `${this.yellow("Submit answers and notes?")} ${this.dim("(Enter/y to confirm, Esc/n to cancel)")}`;
-      lines.push(padToWidth(boxLine(truncateToWidth(confirmMsg, contentWidth))));
-    } else {
-      lines.push(padToWidth(this.dim("├" + horizontalLine(boxWidth - 2) + "┤")));
-      const scrollControls = this.canScrollContext()
-        ? ` · ${this.dim("↑/↓ PgUp/PgDn")} scroll`
-        : "";
-      const nextAction = this.showingNotesScreen
-        ? "submit"
-        : this.currentIndex === this.questions.length - 1
-          ? "notes"
-          : "next";
-      const prevAction = this.showingNotesScreen ? "back" : "prev";
-      const controls = `${this.dim("Tab/Enter")} ${nextAction} · ${this.dim("Shift+Tab")} ${prevAction} · ${this.dim("Shift+Enter")} newline${scrollControls} · ${this.dim("Esc")} cancel`;
-      lines.push(padToWidth(boxLine(truncateToWidth(controls, contentWidth))));
+    for (const line of visibleBodyLines) {
+      pushLine(boxLine(line));
     }
-    lines.push(padToWidth(this.dim("╰" + horizontalLine(boxWidth - 2) + "╯")));
+    for (const line of editorBoxLines) {
+      pushLine(line);
+    }
+    for (const line of footerLines) {
+      pushLine(line);
+    }
 
     this.cachedWidth = width;
     this.cachedLines = lines;
@@ -660,49 +663,51 @@ export default function (pi: ExtensionAPI) {
       const extractionModel = await selectExtractionModel(ctx.model, ctx.modelRegistry);
 
       // Run extraction with loader UI
-      extractionResult = await ctx.ui.custom<ExtractionResult | null>((tui, theme, _kb, done) => {
-        const loader = new BorderedLoader(
-          tui,
-          theme,
-          `Extracting questions using ${extractionModel.id}...`,
-        );
-        loader.onAbort = () => done(null);
+      extractionResult = await ctx.ui.custom<ExtractionResult | null>(
+        (tui, theme, _kb, done) => {
+          const loader = new BorderedLoader(
+            tui,
+            theme,
+            `Extracting questions using ${extractionModel.id}...`,
+          );
+          loader.onAbort = () => done(null);
 
-        const doExtract = async () => {
-          const auth = await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
-          if (auth.ok === false) {
-            throw new Error(auth.error);
-          }
-          const userMessage: UserMessage = {
-            role: "user",
-            content: [{ type: "text", text: lastAssistantText! }],
-            timestamp: Date.now(),
+          const doExtract = async () => {
+            const auth = await ctx.modelRegistry.getApiKeyAndHeaders(extractionModel);
+            if (auth.ok === false) {
+              throw new Error(auth.error);
+            }
+            const userMessage: UserMessage = {
+              role: "user",
+              content: [{ type: "text", text: lastAssistantText! }],
+              timestamp: Date.now(),
+            };
+
+            const response = await complete(
+              extractionModel,
+              { systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
+              { apiKey: auth.apiKey, headers: auth.headers, signal: loader.signal },
+            );
+
+            if (response.stopReason === "aborted") {
+              return null;
+            }
+
+            const responseText = response.content
+              .filter((c): c is { type: "text"; text: string } => c.type === "text")
+              .map((c) => c.text)
+              .join("\n");
+
+            return parseExtractionResult(responseText);
           };
 
-          const response = await complete(
-            extractionModel,
-            { systemPrompt: SYSTEM_PROMPT, messages: [userMessage] },
-            { apiKey: auth.apiKey, headers: auth.headers, signal: loader.signal },
-          );
+          doExtract()
+            .then(done)
+            .catch(() => done(null));
 
-          if (response.stopReason === "aborted") {
-            return null;
-          }
-
-          const responseText = response.content
-            .filter((c): c is { type: "text"; text: string } => c.type === "text")
-            .map((c) => c.text)
-            .join("\n");
-
-          return parseExtractionResult(responseText);
-        };
-
-        doExtract()
-          .then(done)
-          .catch(() => done(null));
-
-        return loader;
-      });
+          return loader;
+        },
+      );
     }
 
     if (extractionResult === null) {
@@ -715,10 +720,16 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    // Show the Q&A component
-    const answersResult = await ctx.ui.custom<string | null>((tui, _theme, _kb, done) => {
-      return new QnAComponent(extractionResult.questions, tui, done);
-    });
+    // Show the Q&A component at full available width and half available height.
+    const answersResult = await ctx.ui.custom<string | null>(
+      (tui, _theme, _kb, done) => {
+        return new QnAComponent(extractionResult.questions, tui, done);
+      },
+      {
+        overlay: true,
+        overlayOptions: { anchor: "bottom-center", width: "100%", maxHeight: "50%", margin: 0 },
+      },
+    );
 
     if (answersResult === null) {
       ctx.ui.notify("Cancelled", "info");
