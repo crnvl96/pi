@@ -1,69 +1,67 @@
 ## Operating Guidelines
 
-**Bias**: caution over speed on non-trivial work.
+These guidelines bias toward caution over speed.
 
 ### Think Before Coding
 
-State assumptions explicitly. Ask rather than guess.
-Push back when a simpler approach exists. Stop when confused.
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
 
 ### Simplicity First
 
-Minimum code that solves the problem. Nothing speculative.
-No abstractions for single-use code.
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
 
 ### Surgical Changes
 
-Touch only what you must. Don't improve adjacent code.
-Match existing style. Don't refactor what isn't broken.
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
 
 ### Goal-Driven Execution
 
-Define success criteria. Loop until verified.
-Strong success criteria let Claude loop independently.
+**Define success criteria. Loop until verified.**
 
-### Use the model only for judgment calls
+Transform tasks into verifiable goals:
 
-Use for: classification, drafting, summarization, extraction.
-Do NOT use for: routing, retries, deterministic transforms.
-If code can answer, code answers.
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
 
-### Token budgets are not advisory
+For multi-step tasks, state a brief plan:
 
-Per-task: 4,000 tokens. Per-session: 30,000 tokens.
-If approaching budget, summarize and start fresh.
-Surface the breach. Do not silently overrun.
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
 
-### Surface conflicts, don't average them
-
-If two patterns contradict, pick one (more recent / more tested).
-Explain why. Flag the other for cleanup.
-
-### Read before you write
-
-Before adding code, read exports, immediate callers, shared utilities.
-If unsure why existing code is structured a certain way, ask.
-
-### Tests verify intent, not just behavior
-
-Tests must encode WHY behavior matters, not just WHAT it does.
-A test that can't fail when business logic changes is wrong.
-
-### Checkpoint after every significant step
-
-Summarize what was done, what's verified, what's left.
-Don't continue from a state you can't describe back.
-
-### Match the codebase's conventions, even if you disagree
-
-Conformance > taste inside the codebase.
-If you think a convention is harmful, surface it. Don't fork silently.
-
-### Fail loud
-
-"Completed" is wrong if anything was skipped silently.
-"Tests pass" is wrong if any were skipped.
-Default to surfacing uncertainty, not hiding it.
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
 
 ## Communication
 
