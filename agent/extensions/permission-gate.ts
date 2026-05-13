@@ -13,7 +13,7 @@ const PERMISSION_GATE_BASH_PATTERNS = [
 ];
 
 export default function PermissionGate(pi: ExtensionAPI): void {
-  pi.on("tool_call", (event) => {
+  pi.on("tool_call", async (event, ctx) => {
     if (!isToolCallEventType("bash", event)) return;
 
     const command = String(event.input.command ?? "");
@@ -21,9 +21,20 @@ export default function PermissionGate(pi: ExtensionAPI): void {
 
     if (!match) return;
 
-    return {
-      block: true,
-      reason: `BLOCKED: '${command}' matches dangerous pattern '${match.label}'. The user has prevented you from doing this.`,
-    };
+    if (!ctx.hasUI)
+      return { block: true, reason: "Dangerous command blocked (no UI for confirmation)" };
+
+    const choice = await ctx.ui.select(`Dangerous command:\n\n  ${command}\n\nAllow?`, [
+      "Yes",
+      "No",
+    ]);
+
+    if (choice !== "Yes")
+      return {
+        block: true,
+        reason: `BLOCKED: '${command}' matches dangerous pattern '${match.label}'. The user has prevented you from doing this.`,
+      };
+
+    return;
   });
 }
