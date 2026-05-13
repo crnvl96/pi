@@ -204,11 +204,13 @@ function parseNumberedQuestionList(text: string): ExtractionResult | null {
 class QnAComponent implements Component {
   private questions: ExtractedQuestion[];
   private answers: string[];
+  private additionalNotes: string = "";
   private contextScrollOffsets: number[];
   private currentIndex: number = 0;
   private editor: Editor;
   private tui: TUI;
   private onDone: (result: string | null) => void;
+  private showingNotesScreen: boolean = false;
   private showingConfirmation: boolean = false;
   private readonly maxContextLines = 12;
   private lastContextLineCount: number = 0;
@@ -255,20 +257,28 @@ class QnAComponent implements Component {
     };
   }
 
-  private allQuestionsAnswered(): boolean {
-    this.saveCurrentAnswer();
-    return this.answers.every((a) => (a?.trim() || "").length > 0);
-  }
+  private saveCurrentEditorText(): void {
+    if (this.showingNotesScreen) {
+      this.additionalNotes = this.editor.getText();
+      return;
+    }
 
-  private saveCurrentAnswer(): void {
     this.answers[this.currentIndex] = this.editor.getText();
   }
 
   private navigateTo(index: number): void {
     if (index < 0 || index >= this.questions.length) return;
-    this.saveCurrentAnswer();
+    this.saveCurrentEditorText();
+    this.showingNotesScreen = false;
     this.currentIndex = index;
     this.editor.setText(this.answers[index] || "");
+    this.invalidate();
+  }
+
+  private navigateToNotes(): void {
+    this.saveCurrentEditorText();
+    this.showingNotesScreen = true;
+    this.editor.setText(this.additionalNotes);
     this.invalidate();
   }
 
@@ -295,7 +305,7 @@ class QnAComponent implements Component {
   }
 
   private submit(): void {
-    this.saveCurrentAnswer();
+    this.saveCurrentEditorText();
 
     // Build the response text
     const parts: string[] = [];
@@ -307,6 +317,13 @@ class QnAComponent implements Component {
         parts.push(`Context:\n${q.context}`);
       }
       parts.push(`A: ${a}`);
+      parts.push("");
+    }
+
+    const notes = this.additionalNotes.trim();
+    if (notes.length > 0) {
+      parts.push("Additional notes:");
+      parts.push(notes);
       parts.push("");
     }
 
@@ -350,14 +367,23 @@ class QnAComponent implements Component {
 
     // Tab / Shift+Tab for navigation
     if (matchesKey(data, Key.tab)) {
-      if (this.currentIndex < this.questions.length - 1) {
+      if (this.showingNotesScreen) {
+        this.saveCurrentEditorText();
+        this.showingConfirmation = true;
+        this.invalidate();
+      } else if (this.currentIndex < this.questions.length - 1) {
         this.navigateTo(this.currentIndex + 1);
-        this.tui.requestRender();
+      } else {
+        this.navigateToNotes();
       }
+      this.tui.requestRender();
       return;
     }
     if (matchesKey(data, Key.shift("tab"))) {
-      if (this.currentIndex > 0) {
+      if (this.showingNotesScreen) {
+        this.navigateTo(this.questions.length - 1);
+        this.tui.requestRender();
+      } else if (this.currentIndex > 0) {
         this.navigateTo(this.currentIndex - 1);
         this.tui.requestRender();
       }
@@ -365,10 +391,10 @@ class QnAComponent implements Component {
     }
 
     // Scroll long markdown context. Plain arrows work before the user starts an answer;
-    // PageUp/PageDown work at any time and do not interfere with answer editing.
+    // PageUp/PageDown work on question screens and do not interfere with answer editing.
     if (
-      (matchesKey(data, Key.up) && this.editor.getText() === "") ||
-      matchesKey(data, Key.pageUp)
+      !this.showingNotesScreen &&
+      ((matchesKey(data, Key.up) && this.editor.getText() === "") || matchesKey(data, Key.pageUp))
     ) {
       if (this.scrollContext(matchesKey(data, Key.pageUp) ? -this.maxContextLines : -1)) {
         this.tui.requestRender();
@@ -376,8 +402,9 @@ class QnAComponent implements Component {
       }
     }
     if (
-      (matchesKey(data, Key.down) && this.editor.getText() === "") ||
-      matchesKey(data, Key.pageDown)
+      !this.showingNotesScreen &&
+      ((matchesKey(data, Key.down) && this.editor.getText() === "") ||
+        matchesKey(data, Key.pageDown))
     ) {
       if (this.scrollContext(matchesKey(data, Key.pageDown) ? this.maxContextLines : 1)) {
         this.tui.requestRender();
@@ -387,14 +414,14 @@ class QnAComponent implements Component {
 
     // Arrow up/down for question navigation when editor is empty and the context
     // cannot scroll further. Editor handles cursor navigation once there is content.
-    if (matchesKey(data, Key.up) && this.editor.getText() === "") {
+    if (!this.showingNotesScreen && matchesKey(data, Key.up) && this.editor.getText() === "") {
       if (this.currentIndex > 0) {
         this.navigateTo(this.currentIndex - 1);
         this.tui.requestRender();
         return;
       }
     }
-    if (matchesKey(data, Key.down) && this.editor.getText() === "") {
+    if (!this.showingNotesScreen && matchesKey(data, Key.down) && this.editor.getText() === "") {
       if (this.currentIndex < this.questions.length - 1) {
         this.navigateTo(this.currentIndex + 1);
         this.tui.requestRender();
@@ -403,15 +430,16 @@ class QnAComponent implements Component {
     }
 
     // Handle Enter ourselves (editor's submit is disabled)
-    // Plain Enter moves to next question or shows confirmation on last question
+    // Plain Enter moves to the next question, then notes, then confirmation.
     // Shift+Enter adds a newline (handled by editor)
     if (matchesKey(data, Key.enter) && !matchesKey(data, Key.shift("enter"))) {
-      this.saveCurrentAnswer();
-      if (this.currentIndex < this.questions.length - 1) {
+      this.saveCurrentEditorText();
+      if (this.showingNotesScreen) {
+        this.showingConfirmation = true;
+      } else if (this.currentIndex < this.questions.length - 1) {
         this.navigateTo(this.currentIndex + 1);
       } else {
-        // On last question - show confirmation
-        this.showingConfirmation = true;
+        this.navigateToNotes();
       }
       this.invalidate();
       this.tui.requestRender();
@@ -430,22 +458,23 @@ class QnAComponent implements Component {
     }
 
     const lines: string[] = [];
-    const boxWidth = Math.min(width - 4, 120); // Allow wider box
-    const contentWidth = boxWidth - 4; // 2 chars padding on each side
+    const boxWidth = Math.max(2, width);
+    const contentWidth = Math.max(1, boxWidth - 4); // 2 chars padding on each side
 
     // Helper to create horizontal lines (dim the whole thing at once)
-    const horizontalLine = (count: number) => "─".repeat(count);
+    const horizontalLine = (count: number) => "─".repeat(Math.max(0, count));
 
     // Helper to create a box line
     const boxLine = (content: string, leftPad: number = 2): string => {
-      const paddedContent = " ".repeat(leftPad) + content;
+      const availableWidth = Math.max(0, boxWidth - leftPad - 2);
+      const paddedContent = " ".repeat(leftPad) + truncateToWidth(content, availableWidth);
       const contentLen = visibleWidth(paddedContent);
       const rightPad = Math.max(0, boxWidth - contentLen - 2);
       return this.dim("│") + paddedContent + " ".repeat(rightPad) + this.dim("│");
     };
 
     const emptyBoxLine = (): string => {
-      return this.dim("│") + " ".repeat(boxWidth - 2) + this.dim("│");
+      return this.dim("│") + " ".repeat(Math.max(0, boxWidth - 2)) + this.dim("│");
     };
 
     const padToWidth = (line: string): string => {
@@ -455,7 +484,10 @@ class QnAComponent implements Component {
 
     // Title
     lines.push(padToWidth(this.dim("╭" + horizontalLine(boxWidth - 2) + "╮")));
-    const title = `${this.bold(this.cyan("Questions"))} ${this.dim(`(${this.currentIndex + 1}/${this.questions.length})`)}`;
+    const totalSteps = this.questions.length + 1;
+    const currentStep = this.showingNotesScreen ? totalSteps : this.currentIndex + 1;
+    const titleText = this.showingNotesScreen ? "Additional notes" : "Questions";
+    const title = `${this.bold(this.cyan(titleText))} ${this.dim(`(${currentStep}/${totalSteps})`)}`;
     lines.push(padToWidth(boxLine(title)));
     lines.push(padToWidth(this.dim("├" + horizontalLine(boxWidth - 2) + "┤")));
 
@@ -463,7 +495,7 @@ class QnAComponent implements Component {
     const progressParts: string[] = [];
     for (let i = 0; i < this.questions.length; i++) {
       const answered = (this.answers[i]?.trim() || "").length > 0;
-      const current = i === this.currentIndex;
+      const current = !this.showingNotesScreen && i === this.currentIndex;
       if (current) {
         progressParts.push(this.cyan("●"));
       } else if (answered) {
@@ -472,48 +504,62 @@ class QnAComponent implements Component {
         progressParts.push(this.dim("○"));
       }
     }
+    const hasNotes = this.additionalNotes.trim().length > 0;
+    progressParts.push(
+      this.showingNotesScreen ? this.cyan("✎") : hasNotes ? this.green("✎") : this.dim("✎"),
+    );
     lines.push(padToWidth(boxLine(progressParts.join(" "))));
     lines.push(padToWidth(emptyBoxLine()));
 
-    // Current question. Render as Markdown so inline code, emphasis, links,
-    // lists, and other formatting stay readable.
-    const q = this.questions[this.currentIndex];
-    const questionLines = this.renderMarkdown(q.question, contentWidth);
-    for (const line of questionLines) {
-      lines.push(padToWidth(boxLine(line)));
-    }
-
-    // Context if present. Render as Markdown so blockquotes, lists, code fences,
-    // tables, and syntax highlighting stay rich and readable.
     this.lastContextLineCount = 0;
     this.lastContextViewportLines = 0;
-    if (q.context) {
-      lines.push(padToWidth(emptyBoxLine()));
-
-      const contextLines = this.renderMarkdown(q.context, contentWidth);
-      this.lastContextLineCount = contextLines.length;
-      this.lastContextViewportLines = Math.min(this.maxContextLines, contextLines.length);
-
-      const maxScroll = Math.max(0, contextLines.length - this.lastContextViewportLines);
-      const scrollOffset = Math.max(
-        0,
-        Math.min(maxScroll, this.contextScrollOffsets[this.currentIndex] ?? 0),
+    if (this.showingNotesScreen) {
+      const notePromptLines = this.renderMarkdown(
+        "Add any optional notes to send with your answers. Leave this blank if there is nothing to add.",
+        contentWidth,
       );
-      this.contextScrollOffsets[this.currentIndex] = scrollOffset;
-
-      if (contextLines.length > this.lastContextViewportLines) {
-        const scrollInfo = `${this.dim(
-          `(${scrollOffset + 1}-${scrollOffset + this.lastContextViewportLines}/${contextLines.length})`,
-        )} ${this.dim("↑/↓ or PgUp/PgDn")}`;
-        lines.push(padToWidth(boxLine(truncateToWidth(scrollInfo, contentWidth))));
+      for (const line of notePromptLines) {
+        lines.push(padToWidth(boxLine(line)));
+      }
+    } else {
+      // Current question. Render as Markdown so inline code, emphasis, links,
+      // lists, and other formatting stay readable.
+      const q = this.questions[this.currentIndex];
+      const questionLines = this.renderMarkdown(q.question, contentWidth);
+      for (const line of questionLines) {
+        lines.push(padToWidth(boxLine(line)));
       }
 
-      const visibleContextLines = contextLines.slice(
-        scrollOffset,
-        scrollOffset + this.lastContextViewportLines,
-      );
-      for (const line of visibleContextLines) {
-        lines.push(padToWidth(boxLine(line)));
+      // Context if present. Render as Markdown so blockquotes, lists, code fences,
+      // tables, and syntax highlighting stay rich and readable.
+      if (q.context) {
+        lines.push(padToWidth(emptyBoxLine()));
+
+        const contextLines = this.renderMarkdown(q.context, contentWidth);
+        this.lastContextLineCount = contextLines.length;
+        this.lastContextViewportLines = Math.min(this.maxContextLines, contextLines.length);
+
+        const maxScroll = Math.max(0, contextLines.length - this.lastContextViewportLines);
+        const scrollOffset = Math.max(
+          0,
+          Math.min(maxScroll, this.contextScrollOffsets[this.currentIndex] ?? 0),
+        );
+        this.contextScrollOffsets[this.currentIndex] = scrollOffset;
+
+        if (contextLines.length > this.lastContextViewportLines) {
+          const scrollInfo = `${this.dim(
+            `(${scrollOffset + 1}-${scrollOffset + this.lastContextViewportLines}/${contextLines.length})`,
+          )} ${this.dim("↑/↓ or PgUp/PgDn")}`;
+          lines.push(padToWidth(boxLine(truncateToWidth(scrollInfo, contentWidth))));
+        }
+
+        const visibleContextLines = contextLines.slice(
+          scrollOffset,
+          scrollOffset + this.lastContextViewportLines,
+        );
+        for (const line of visibleContextLines) {
+          lines.push(padToWidth(boxLine(line)));
+        }
       }
     }
 
@@ -521,16 +567,19 @@ class QnAComponent implements Component {
 
     // Render the editor component (multi-line input) with padding
     // Skip the first and last lines (editor's own border lines)
-    const answerPrefix = this.bold("A: ");
-    const editorWidth = contentWidth - 4 - 3; // Extra padding + space for "A: "
+    const editorPrefixText = this.showingNotesScreen ? "Notes: " : "A: ";
+    const editorPrefix = this.bold(editorPrefixText);
+    const editorWidth = Math.max(1, contentWidth - 4 - visibleWidth(editorPrefixText));
     const editorLines = this.editor.render(editorWidth);
     for (let i = 1; i < editorLines.length - 1; i++) {
       if (i === 1) {
-        // First content line gets the "A: " prefix
-        lines.push(padToWidth(boxLine(answerPrefix + editorLines[i])));
+        // First content line gets the input prefix
+        lines.push(padToWidth(boxLine(editorPrefix + editorLines[i])));
       } else {
         // Subsequent lines get padding to align with the first line
-        lines.push(padToWidth(boxLine("   " + editorLines[i])));
+        lines.push(
+          padToWidth(boxLine(" ".repeat(visibleWidth(editorPrefixText)) + editorLines[i])),
+        );
       }
     }
 
@@ -539,14 +588,20 @@ class QnAComponent implements Component {
     // Confirmation dialog or footer with controls
     if (this.showingConfirmation) {
       lines.push(padToWidth(this.dim("├" + horizontalLine(boxWidth - 2) + "┤")));
-      const confirmMsg = `${this.yellow("Submit all answers?")} ${this.dim("(Enter/y to confirm, Esc/n to cancel)")}`;
+      const confirmMsg = `${this.yellow("Submit answers and notes?")} ${this.dim("(Enter/y to confirm, Esc/n to cancel)")}`;
       lines.push(padToWidth(boxLine(truncateToWidth(confirmMsg, contentWidth))));
     } else {
       lines.push(padToWidth(this.dim("├" + horizontalLine(boxWidth - 2) + "┤")));
       const scrollControls = this.canScrollContext()
         ? ` · ${this.dim("↑/↓ PgUp/PgDn")} scroll`
         : "";
-      const controls = `${this.dim("Tab/Enter")} next · ${this.dim("Shift+Tab")} prev · ${this.dim("Shift+Enter")} newline${scrollControls} · ${this.dim("Esc")} cancel`;
+      const nextAction = this.showingNotesScreen
+        ? "submit"
+        : this.currentIndex === this.questions.length - 1
+          ? "notes"
+          : "next";
+      const prevAction = this.showingNotesScreen ? "back" : "prev";
+      const controls = `${this.dim("Tab/Enter")} ${nextAction} · ${this.dim("Shift+Tab")} ${prevAction} · ${this.dim("Shift+Enter")} newline${scrollControls} · ${this.dim("Esc")} cancel`;
       lines.push(padToWidth(boxLine(truncateToWidth(controls, contentWidth))));
     }
     lines.push(padToWidth(this.dim("╰" + horizontalLine(boxWidth - 2) + "╯")));
