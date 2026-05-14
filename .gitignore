@@ -1,7 +1,7 @@
 # Local/private pi data
 auth.json
 sessions/
-.pi/todos/
+.pi/
 
 # Node
 node_modules/
