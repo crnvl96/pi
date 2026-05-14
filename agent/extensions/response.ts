@@ -26,7 +26,7 @@ function getLatestAssistantResponse(ctx: ExtensionContext): string | undefined {
 export default function (pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => {
     ctx.ui.onTerminalInput((data) => {
-      if (!matchesKey(data, "ctrl+.")) return undefined;
+      if (!matchesKey(data, "ctrl+g")) return undefined;
 
       const latestResponse = getLatestAssistantResponse(ctx);
       if (latestResponse) {
@@ -38,8 +38,8 @@ export default function (pi: ExtensionAPI) {
         );
       }
 
-      // Feed Ctrl+G back into pi so the built-in external-editor action runs.
-      return { data: "\x07" };
+      // Let pi's built-in Ctrl+G external-editor action continue with the updated editor text.
+      return { data };
     });
   });
 }
