@@ -26,7 +26,7 @@ function getLatestAssistantResponse(ctx: ExtensionContext): string | undefined {
 export default function (pi: ExtensionAPI) {
   pi.on("session_start", (_event, ctx) => {
     ctx.ui.onTerminalInput((data) => {
-      if (!matchesKey(data, "ctrl+shift+g")) return undefined;
+      if (!matchesKey(data, "ctrl+.")) return undefined;
 
       const latestResponse = getLatestAssistantResponse(ctx);
       if (latestResponse) {

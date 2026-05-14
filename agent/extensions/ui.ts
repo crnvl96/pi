@@ -6,8 +6,11 @@
  * - getExtensionStatuses(): texts from ctx.ui.setStatus()
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
+import { VERSION } from "@earendil-works/pi-coding-agent";
+
+const DEFAULT_LABEL = "Pondering...";
 
 const ansi = {
   reset: "\x1b[0m",
@@ -18,8 +21,10 @@ const ansi = {
 const color = (code: string, text: string) => `${code}${text}${ansi.reset}`;
 const gray = (text: string) => color(ansi.gray, text);
 const cyan = (text: string) => color(ansi.cyan, text);
+
 const joinStatusParts = (parts: Array<string | undefined>) =>
   parts.filter((part): part is string => !!part).join(gray(" ┃ "));
+
 const lastPathComponent = (cwd: string) => {
   const home = process.env.HOME?.replace(/\/+$/, "");
   const normalizedCwd = cwd.replace(/\/+$/, "");
@@ -29,6 +34,7 @@ const lastPathComponent = (cwd: string) => {
 
   return normalizedCwd.split("/").pop() || normalizedCwd;
 };
+
 const contextThinkingLevel = (percent: number) => {
   if (percent < 10) return "off";
   if (percent < 20) return "minimal";
@@ -38,8 +44,40 @@ const contextThinkingLevel = (percent: number) => {
   return "xhigh";
 };
 
+function getPiMascot(theme: Theme): string[] {
+  const piBlue = (text: string) => theme.fg("accent", text);
+  const white = (text: string) => text;
+  const black = (text: string) => theme.fg("dim", text);
+  const BLOCK = "█";
+  const PUPIL = "▌";
+  const eye = `${white(BLOCK)}${black(PUPIL)}`;
+  const lineEyes = `     ${eye}  ${eye}`;
+  const lineBar = `  ${piBlue(BLOCK.repeat(14))}`;
+  const lineLeg = `     ${piBlue(BLOCK.repeat(2))}    ${piBlue(BLOCK.repeat(2))}`;
+  return ["", lineEyes, lineBar, lineLeg, lineLeg, lineLeg, lineLeg, ""];
+}
+
 export default function (pi: ExtensionAPI) {
-  let enabled = true;
+  let header_enabled = true;
+  let footer_enabled = true;
+  let label = DEFAULT_LABEL;
+
+  const applyLabel = (ctx: ExtensionContext) => {
+    ctx.ui.setHiddenThinkingLabel(label);
+  };
+
+  function enableHeader(ctx: ExtensionContext) {
+    ctx.ui.setHeader((_tui, theme) => {
+      return {
+        render(_width: number): string[] {
+          const mascotLines = getPiMascot(theme);
+          const subtitle = `${theme.fg("muted", "   shitty coding agent")}${theme.fg("dim", ` v${VERSION}`)}`;
+          return [...mascotLines, subtitle];
+        },
+        invalidate() {},
+      };
+    });
+  }
 
   function enableFooter(ctx: ExtensionContext) {
     ctx.ui.setFooter((tui, theme, footerData) => {
@@ -49,7 +87,6 @@ export default function (pi: ExtensionAPI) {
         dispose: unsub,
         invalidate() {},
         render(width: number): string[] {
-          // Get git branch (not otherwise accessible)
           const branch = footerData.getGitBranch();
           const fmt = (n: number) => {
             if (n < 1000) return n.toString();
@@ -90,29 +127,18 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.on("session_start", async (_event, ctx) => {
-    if (enabled) enableFooter(ctx);
+    if (footer_enabled) enableFooter(ctx);
+    if (header_enabled) enableHeader(ctx);
+    applyLabel(ctx);
   });
 
   pi.on("thinking_level_select", async (_event, ctx) => {
-    if (enabled) enableFooter(ctx);
+    if (footer_enabled) enableFooter(ctx);
+    if (header_enabled) enableHeader(ctx);
   });
 
   pi.on("model_select", async (_event, ctx) => {
-    if (enabled) enableFooter(ctx);
-  });
-
-  pi.registerCommand("footer", {
-    description: "Toggle custom footer",
-    handler: async (_args, ctx) => {
-      enabled = !enabled;
-
-      if (enabled) {
-        enableFooter(ctx);
-        ctx.ui.notify("Custom footer enabled", "info");
-      } else {
-        ctx.ui.setFooter(undefined);
-        ctx.ui.notify("Default footer restored", "info");
-      }
-    },
+    if (footer_enabled) enableFooter(ctx);
+    if (header_enabled) enableHeader(ctx);
   });
 }

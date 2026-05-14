@@ -62,26 +62,3 @@ For multi-step tasks, state a brief plan:
 ```
 
 Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
-
-## Communication
-
-- Be brief.
-- Communicate in English unless explicitly instructed otherwise.
-- Preserve standalone terms, names, and quoted expressions in the language they were provided.
-- Don’t switch the conversation language solely because the user used isolated words or phrases in another language.
-
-## Context management
-
-Protect context usage. Any command with unknown or potentially large output must be byte-capped.
-
-Default pattern:
-
-```bash
-COMMAND 2>&1 | head -c 4000
-```
-
-For logs or recent failures:
-
-```bash
-COMMAND 2>&1 | tail -c 4000
-```
