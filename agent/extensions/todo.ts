@@ -371,7 +371,7 @@ class TodoSelectorComponent extends Container implements Focusable {
     this.hintText.setText(
       this.theme.fg(
         "dim",
-        "Type to search • ↑↓ select • Tab open/doing • Enter actions • Ctrl+O/T/P/B • Esc close",
+        "Type to search • ↑↓ select • Tab open/doing • Enter actions • Esc close",
       ),
     );
   }
@@ -1841,54 +1841,6 @@ export default function todosExtension(pi: ExtensionAPI) {
           await showActionMenu(todo);
         };
 
-        const handleSelectedShortcut = async (
-          action: "open" | "copyPath" | "copyTitle" | "copyText",
-        ) => {
-          const selected = selector?.getSelectedTodo();
-          if (!selected) return;
-
-          if (action === "copyPath") {
-            copyTodoPathToClipboard(selected);
-            return;
-          }
-
-          const record = await resolveTodoRecord(selected);
-          if (!record) return;
-
-          if (action === "open") {
-            await openTodoOverlay(record);
-            return;
-          }
-          if (action === "copyTitle") {
-            copyTodoTitleToClipboard(record);
-            return;
-          }
-          copyTodoTextToClipboard(record);
-        };
-
-        const handleShortcutInput = (data: string): boolean => {
-          if (activeComponent !== selector) return false;
-          if (matchesKey(data, Key.tab)) return false;
-
-          if (matchesKey(data, Key.ctrl("o"))) {
-            void handleSelectedShortcut("open");
-            return true;
-          }
-          if (matchesKey(data, Key.ctrl("t"))) {
-            void handleSelectedShortcut("copyTitle");
-            return true;
-          }
-          if (matchesKey(data, Key.ctrl("p"))) {
-            void handleSelectedShortcut("copyPath");
-            return true;
-          }
-          if (matchesKey(data, Key.ctrl("b"))) {
-            void handleSelectedShortcut("copyText");
-            return true;
-          }
-          return false;
-        };
-
         const handleCycleStatus = async (todo: TodoFrontMatter) => {
           const todoDir = getTodoSourceDir(todo, todosDir);
           const nextStatus = getNextTabTodoStatus(todo.status);
@@ -1936,7 +1888,6 @@ export default function todosExtension(pi: ExtensionAPI) {
             activeComponent?.invalidate();
           },
           handleInput(data: string) {
-            if (handleShortcutInput(data)) return;
             activeComponent?.handleInput?.(data);
           },
         };

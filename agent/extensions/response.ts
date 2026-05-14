@@ -1,5 +1,4 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { matchesKey } from "@earendil-works/pi-tui";
 
 function getLatestAssistantResponse(ctx: ExtensionContext): string | undefined {
   const branch = ctx.sessionManager.getBranch();
@@ -24,22 +23,15 @@ function getLatestAssistantResponse(ctx: ExtensionContext): string | undefined {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.on("session_start", (_event, ctx) => {
-    ctx.ui.onTerminalInput((data) => {
-      if (!matchesKey(data, "ctrl+g")) return undefined;
-
+  pi.registerCommand("res", {
+    description: "Copy the latest assistant response into the editor",
+    handler: async (_args, ctx) => {
       const latestResponse = getLatestAssistantResponse(ctx);
       if (latestResponse) {
         ctx.ui.setEditorText(latestResponse);
       } else {
-        ctx.ui.notify(
-          "No assistant response found; opening editor with current buffer.",
-          "warning",
-        );
+        ctx.ui.notify("No assistant response found.", "warning");
       }
-
-      // Let pi's built-in Ctrl+G external-editor action continue with the updated editor text.
-      return { data };
-    });
+    },
   });
 }
