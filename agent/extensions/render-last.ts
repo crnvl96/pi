@@ -1,4 +1,5 @@
 import {
+  copyToClipboard,
   getMarkdownTheme,
   type ExtensionAPI,
   type ExtensionContext,
@@ -15,7 +16,6 @@ import {
 
 type LastPosition = {
   entryId: string;
-  cursorLine: number;
   scrollTop: number;
 };
 
@@ -55,13 +55,14 @@ function fitLine(line: string, width: number): string {
   return clipped + " ".repeat(Math.max(0, width - visibleWidth(clipped)));
 }
 
+const pageJumpMarkerMs = 700;
 const sgrReset = String.fromCharCode(27) + "[0m";
 const sgrResetPattern = new RegExp(`${String.fromCharCode(27)}\\[0m`, "g");
 
-function makeBackgroundWrapper(bg: (text: string) => string): (text: string) => string {
-  const sample = bg("x");
+function makeStyleWrapper(style: (text: string) => string): (text: string) => string {
+  const sample = style("x");
   const markerIndex = sample.indexOf("x");
-  if (markerIndex === -1) return bg;
+  if (markerIndex === -1) return style;
 
   const start = sample.slice(0, markerIndex);
   const end = sample.slice(markerIndex + 1);
@@ -70,22 +71,30 @@ function makeBackgroundWrapper(bg: (text: string) => string): (text: string) => 
 }
 
 class LastResponseOverlay implements Component {
-  private cursorLine: number;
   private scrollTop: number;
   private cachedWidth?: number;
   private cachedRenderedLines?: string[];
-  private readonly highlight: (text: string) => string;
+  private pageJumpMarkerLine: number | undefined;
+  private pageJumpMarkerStartedAt = 0;
+  private pageJumpMarkerTimers: Array<ReturnType<typeof setTimeout>> = [];
+  private readonly footerStyle: (text: string) => string;
+  private readonly pageJumpMarkerStrongStyle: (text: string) => string;
+  private readonly pageJumpMarkerSoftStyle: (text: string) => string;
 
   constructor(
     private readonly text: string,
     private readonly tui: TUI,
     startPosition: Omit<LastPosition, "entryId"> | undefined,
-    selectedBg: (text: string) => string,
+    footerStyle: (text: string) => string,
+    pageJumpMarkerStrongStyle: (text: string) => string,
+    pageJumpMarkerSoftStyle: (text: string) => string,
+    private readonly onCopy: () => void,
     private readonly onClose: (position: Omit<LastPosition, "entryId">) => void,
   ) {
-    this.cursorLine = startPosition?.cursorLine ?? 0;
     this.scrollTop = startPosition?.scrollTop ?? 0;
-    this.highlight = makeBackgroundWrapper(selectedBg);
+    this.footerStyle = makeStyleWrapper(footerStyle);
+    this.pageJumpMarkerStrongStyle = makeStyleWrapper(pageJumpMarkerStrongStyle);
+    this.pageJumpMarkerSoftStyle = makeStyleWrapper(pageJumpMarkerSoftStyle);
   }
 
   handleInput(data: string): void {
@@ -99,18 +108,24 @@ class LastResponseOverlay implements Component {
       return;
     }
 
+    if (data === "y") {
+      this.onCopy();
+      this.close();
+      return;
+    }
+
     if (data === "g") {
-      this.goTo(0);
+      this.scrollTo(0);
     } else if (data === "G") {
-      this.goTo(Number.POSITIVE_INFINITY);
+      this.scrollTo(Number.POSITIVE_INFINITY);
     } else if (data === "d") {
-      this.moveCursor(this.halfPageSize());
+      this.scrollHalfPage(1);
     } else if (data === "u") {
-      this.moveCursor(-this.halfPageSize());
+      this.scrollHalfPage(-1);
     } else if (matchesKey(data, Key.down)) {
-      this.moveCursor(1);
+      this.scrollBy(1);
     } else if (matchesKey(data, Key.up)) {
-      this.moveCursor(-1);
+      this.scrollBy(-1);
     } else {
       return;
     }
@@ -119,18 +134,19 @@ class LastResponseOverlay implements Component {
   }
 
   render(width: number): string[] {
-    const height = this.visibleHeight();
+    const contentHeight = this.contentHeight();
     const contentWidth = Math.max(1, width);
     const renderedLines = this.renderMarkdown(contentWidth);
-    this.clampPosition(renderedLines.length, height);
+    this.clampScroll(renderedLines.length, Math.max(1, contentHeight));
 
     const lines: string[] = [];
-    for (let row = 0; row < height; row++) {
+    for (let row = 0; row < contentHeight; row++) {
       const lineIndex = this.scrollTop + row;
       const rawLine = renderedLines[lineIndex] ?? "";
       const fitted = fitLine(rawLine, contentWidth);
-      lines.push(lineIndex === this.cursorLine ? this.highlight(fitted) : fitted);
+      lines.push(this.styleContentLine(lineIndex, fitted));
     }
+    lines.push(this.renderFooter(contentWidth, renderedLines.length, contentHeight));
 
     return lines;
   }
@@ -156,38 +172,83 @@ class LastResponseOverlay implements Component {
     return Math.max(1, this.tui.terminal.rows);
   }
 
+  private contentHeight(): number {
+    return Math.max(0, this.visibleHeight() - 1);
+  }
+
   private halfPageSize(): number {
-    return Math.max(1, Math.floor(this.visibleHeight() / 2));
+    return Math.max(1, Math.floor(Math.max(1, this.contentHeight()) / 2));
   }
 
-  private moveCursor(delta: number): void {
-    const renderedLines = this.renderMarkdown(Math.max(1, this.tui.terminal.columns));
-    this.cursorLine += delta;
-    this.clampPosition(renderedLines.length, this.visibleHeight());
-  }
+  private scrollHalfPage(direction: 1 | -1): void {
+    const markerLine =
+      direction > 0 ? this.scrollTop + Math.max(1, this.contentHeight()) - 1 : this.scrollTop;
+    const previousScrollTop = this.scrollTop;
+    this.scrollBy(direction * this.halfPageSize());
 
-  private goTo(line: number): void {
-    const renderedLines = this.renderMarkdown(Math.max(1, this.tui.terminal.columns));
-    this.cursorLine = line;
-    this.clampPosition(renderedLines.length, this.visibleHeight());
-  }
-
-  private clampPosition(totalLines: number, height: number): void {
-    const lastLine = Math.max(0, totalLines - 1);
-    this.cursorLine = Math.max(0, Math.min(this.cursorLine, lastLine));
-
-    if (this.cursorLine < this.scrollTop) {
-      this.scrollTop = this.cursorLine;
-    } else if (this.cursorLine >= this.scrollTop + height) {
-      this.scrollTop = this.cursorLine - height + 1;
+    if (this.scrollTop !== previousScrollTop) {
+      this.showPageJumpMarker(markerLine);
     }
+  }
 
+  private scrollBy(delta: number): void {
+    const renderedLines = this.renderMarkdown(Math.max(1, this.tui.terminal.columns));
+    this.scrollTop += delta;
+    this.clampScroll(renderedLines.length, Math.max(1, this.contentHeight()));
+  }
+
+  private scrollTo(scrollTop: number): void {
+    const renderedLines = this.renderMarkdown(Math.max(1, this.tui.terminal.columns));
+    this.scrollTop = scrollTop;
+    this.clampScroll(renderedLines.length, Math.max(1, this.contentHeight()));
+  }
+
+  private clampScroll(totalLines: number, height: number): void {
     const maxScroll = Math.max(0, totalLines - height);
     this.scrollTop = Math.max(0, Math.min(this.scrollTop, maxScroll));
   }
 
+  private renderFooter(width: number, totalLines: number, contentHeight: number): string {
+    const visibleLine = Math.min(totalLines, this.scrollTop + Math.max(1, contentHeight));
+    const footer = `↑/↓ scroll • u/d half-page • g/G top/bottom • y copy • q/esc/enter close • ${visibleLine}/${totalLines}`;
+    return this.footerStyle(fitLine(footer, width));
+  }
+
+  private styleContentLine(lineIndex: number, line: string): string {
+    if (this.pageJumpMarkerLine !== lineIndex) return line;
+
+    const ageMs = Date.now() - this.pageJumpMarkerStartedAt;
+    if (ageMs >= pageJumpMarkerMs) return line;
+    if (ageMs >= Math.floor(pageJumpMarkerMs / 2)) return this.pageJumpMarkerSoftStyle(line);
+
+    return this.pageJumpMarkerStrongStyle(line);
+  }
+
+  private showPageJumpMarker(line: number): void {
+    this.clearPageJumpMarkerTimers();
+    this.pageJumpMarkerLine = line;
+    this.pageJumpMarkerStartedAt = Date.now();
+
+    for (const delayMs of [Math.floor(pageJumpMarkerMs / 2), pageJumpMarkerMs]) {
+      this.pageJumpMarkerTimers.push(
+        setTimeout(() => {
+          if (delayMs >= pageJumpMarkerMs) {
+            this.pageJumpMarkerLine = undefined;
+          }
+          this.tui.requestRender();
+        }, delayMs),
+      );
+    }
+  }
+
+  private clearPageJumpMarkerTimers(): void {
+    for (const timer of this.pageJumpMarkerTimers) clearTimeout(timer);
+    this.pageJumpMarkerTimers = [];
+  }
+
   private close(): void {
-    this.onClose({ cursorLine: this.cursorLine, scrollTop: this.scrollTop });
+    this.clearPageJumpMarkerTimers();
+    this.onClose({ scrollTop: this.scrollTop });
   }
 }
 
@@ -214,7 +275,14 @@ export default function (pi: ExtensionAPI) {
           response.text,
           tui,
           startPosition,
+          (text: string) => theme.fg("dim", text),
           (text: string) => theme.bg("selectedBg", text),
+          (text: string) => theme.fg("accent", text),
+          () => {
+            void copyToClipboard(response.text)
+              .then(() => ctx.ui.notify("Copied overlay content to clipboard", "info"))
+              .catch(() => ctx.ui.notify("Failed to copy overlay content", "error"));
+          },
           (position) => {
             lastPosition = { entryId: response.entryId, ...position };
             done();
