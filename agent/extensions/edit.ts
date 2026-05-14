@@ -662,7 +662,7 @@ async function applyClassicEdits(
     fileGroups.get(abs)!.push({ index: i, edit: edits[i] });
   }
 
-  const results: EditResult[] = Array.from({ length: edits.length });
+  const results: EditResult[] = new Array(edits.length);
 
   // Verify write access to all target files before mutating anything.
   for (const absPath of editOrder) {
@@ -772,7 +772,7 @@ export default function (pi: ExtensionAPI) {
     ],
     parameters: multiEditSchema,
 
-    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+    async execute(toolCallId, params, signal, onUpdate, ctx) {
       const { path, oldText, newText, multi, patch } = params;
 
       const hasAnyClassicParam =

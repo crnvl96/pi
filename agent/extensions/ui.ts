@@ -1,16 +1,6 @@
-/**
- * Custom Footer Extension - demonstrates ctx.ui.setFooter()
- *
- * footerData exposes data not otherwise accessible:
- * - getGitBranch(): current git branch
- * - getExtensionStatuses(): texts from ctx.ui.setStatus()
- */
-
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { VERSION } from "@earendil-works/pi-coding-agent";
-
-const DEFAULT_LABEL = "Pondering...";
 
 const ansi = {
   reset: "\x1b[0m",
@@ -28,10 +18,8 @@ const joinStatusParts = (parts: Array<string | undefined>) =>
 const lastPathComponent = (cwd: string) => {
   const home = process.env.HOME?.replace(/\/+$/, "");
   const normalizedCwd = cwd.replace(/\/+$/, "");
-
   if (!normalizedCwd) return cwd;
   if (home && normalizedCwd === home) return "~";
-
   return normalizedCwd.split("/").pop() || normalizedCwd;
 };
 
@@ -58,12 +46,8 @@ function getPiMascot(theme: Theme): string[] {
 }
 
 export default function (pi: ExtensionAPI) {
-  let header_enabled = true;
-  let footer_enabled = true;
-  let label = DEFAULT_LABEL;
-
   const applyLabel = (ctx: ExtensionContext) => {
-    ctx.ui.setHiddenThinkingLabel(label);
+    ctx.ui.setHiddenThinkingLabel("Pondering...");
   };
 
   function enableHeader(ctx: ExtensionContext) {
@@ -127,18 +111,20 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.on("session_start", async (_event, ctx) => {
-    if (footer_enabled) enableFooter(ctx);
-    if (header_enabled) enableHeader(ctx);
+    enableFooter(ctx);
+    enableHeader(ctx);
     applyLabel(ctx);
   });
 
   pi.on("thinking_level_select", async (_event, ctx) => {
-    if (footer_enabled) enableFooter(ctx);
-    if (header_enabled) enableHeader(ctx);
+    enableFooter(ctx);
+    enableHeader(ctx);
+    applyLabel(ctx);
   });
 
   pi.on("model_select", async (_event, ctx) => {
-    if (footer_enabled) enableFooter(ctx);
-    if (header_enabled) enableHeader(ctx);
+    enableFooter(ctx);
+    enableHeader(ctx);
+    applyLabel(ctx);
   });
 }
