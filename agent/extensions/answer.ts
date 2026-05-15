@@ -23,12 +23,13 @@ function getLatestAssistantResponse(ctx: ExtensionContext): string | undefined {
 }
 
 export default function (pi: ExtensionAPI) {
-  pi.registerCommand("res", {
-    description: "Copy the latest assistant response into the editor",
+  pi.registerCommand("answer", {
+    description: "Copy the latest assistant response into $EDITOR",
     handler: async (_args, ctx) => {
       const latestResponse = getLatestAssistantResponse(ctx);
       if (latestResponse) {
         ctx.ui.setEditorText(latestResponse);
+        setImmediate(() => process.stdin.emit("data", Buffer.from("\x07")));
       } else {
         ctx.ui.notify("No assistant response found.", "warning");
       }
