@@ -14,6 +14,7 @@ type MessageLike = {
 type EntryLike = {
   type: string;
   message?: MessageLike;
+  summary?: string;
 };
 
 function stringify(value: unknown): string {
@@ -58,7 +59,12 @@ function latestOutputFromSession(ctx: ExtensionContext): string {
   const entries = ctx.sessionManager.getBranch() as EntryLike[];
 
   for (let i = entries.length - 1; i >= 0; i--) {
-    const message = entries[i]?.message;
+    const entry = entries[i];
+    if (entry?.type === "branch_summary" && entry.summary?.trim()) {
+      return entry.summary.trim();
+    }
+
+    const message = entry?.message;
     if (!message || !isOutputMessage(message)) continue;
 
     const text = contentToText(message.content);
@@ -89,6 +95,11 @@ export default function latestOutputToEditor(pi: ExtensionAPI) {
     if (text) latestOutput = text;
   });
 
+  pi.on("session_tree", async (event) => {
+    const summary = event.summaryEntry?.summary?.trim();
+    if (summary) latestOutput = summary;
+  });
+
   async function fillEditor(ctx: ExtensionContext) {
     if (!ctx.hasUI) return;
 
@@ -101,7 +112,7 @@ export default function latestOutputToEditor(pi: ExtensionAPI) {
     dispatchCtrlG();
   }
 
-  pi.registerCommand("latest-to-editor", {
+  pi.registerCommand("feed-editor", {
     description: "Put latest assistant/tool output into the editor buffer",
     handler: async (_args, ctx) => fillEditor(ctx),
   });
