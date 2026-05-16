@@ -32,6 +32,14 @@ const contextThinkingLevel = (percent: number) => {
   return "xhigh";
 };
 
+const fmtNumeric = (n: number) => {
+  if (n < 1000) return n.toString();
+  if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
+  if (n < 1000000) return `${Math.round(n / 1000)}k`;
+  if (n < 10000000) return `${(n / 1000000).toFixed(1)}M`;
+  return `${Math.round(n / 1000000)}M`;
+};
+
 export default function (pi: ExtensionAPI) {
   const applyLabel = (ctx: ExtensionContext) => {
     ctx.ui.setHiddenThinkingLabel("Pondering...");
@@ -51,40 +59,45 @@ export default function (pi: ExtensionAPI) {
 
   function applyFooter(ctx: ExtensionContext) {
     ctx.ui.setFooter((tui, theme, footerData) => {
+      const getCwd = () => {
+        const branch = footerData.getGitBranch();
+        const cwd = lastPathComponent(ctx.cwd);
+        const strCwd = branch ? `${cwd} (${branch})` : cwd;
+        if (!strCwd) return undefined;
+        return cyan(strCwd);
+      };
+
+      const model = ctx.model ? cyan(`${ctx.model.provider}/${ctx.model.id}`) : undefined;
+
+      const getThinkingLevel = () => {
+        const thinkingLevel = pi.getThinkingLevel();
+        if (!thinkingLevel) return undefined;
+        return theme.getThinkingBorderColor(thinkingLevel)(thinkingLevel);
+      };
+
+      const getContextUsage = () => {
+        const context = ctx.getContextUsage();
+        if (context?.percent === undefined || context?.percent === null) return undefined;
+        const contextStr = `${context.percent.toFixed(1)}%/${fmtNumeric(context.contextWindow)}`;
+        const color = theme.getThinkingBorderColor(contextThinkingLevel(context.percent));
+        return color(contextStr);
+      };
+
+      const getLeft = () => joinStatusParts([getThinkingLevel(), getContextUsage(), getCwd()]);
+
       return {
         dispose: footerData.onBranchChange(() => tui.requestRender()),
         invalidate() {},
         render(width: number): string[] {
-          const fmt = (n: number) => {
-            if (n < 1000) return n.toString();
-            if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
-            if (n < 1000000) return `${Math.round(n / 1000)}k`;
-            if (n < 10000000) return `${(n / 1000000).toFixed(1)}M`;
-            return `${Math.round(n / 1000000)}M`;
-          };
-          const branch = footerData.getGitBranch();
-          const cwd = lastPathComponent(ctx.cwd);
-          const cwdStr = branch ? `${cwd} (${branch})` : cwd;
-          const thinkingLevel = pi.getThinkingLevel();
-          const modelStr = ctx.model ? cyan(`${ctx.model.provider}/${ctx.model.id}`) : undefined;
-          const contextUsage = ctx.getContextUsage();
-          const contextStr =
-            contextUsage?.percent === undefined || contextUsage.percent === null
-              ? undefined
-              : theme.getThinkingBorderColor(contextThinkingLevel(contextUsage.percent))(
-                  `${contextUsage.percent.toFixed(1)}%/${fmt(contextUsage.contextWindow)}`,
-                );
-          const leftContent = joinStatusParts([
-            thinkingLevel ? theme.getThinkingBorderColor(thinkingLevel)(thinkingLevel) : undefined,
-            contextStr,
-            cwdStr ? cyan(cwdStr) : undefined,
-          ]);
-          if (!modelStr) return [truncateToWidth(leftContent, width)];
-          const modelWidth = visibleWidth(modelStr);
-          if (modelWidth >= width) return [truncateToWidth(modelStr, width)];
+          const leftContent = getLeft();
+          if (!model) return [truncateToWidth(leftContent, width)];
+
+          const modelWidth = visibleWidth(model);
+          if (modelWidth >= width) return [truncateToWidth(model, width)];
+
           const left = truncateToWidth(leftContent, Math.max(0, width - modelWidth - 2));
           const padding = " ".repeat(Math.max(0, width - visibleWidth(left) - modelWidth));
-          return [left + padding + modelStr];
+          return [left + padding + model];
         },
       };
     });
