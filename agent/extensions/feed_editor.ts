@@ -80,7 +80,7 @@ function dispatchCtrlG() {
   });
 }
 
-export default function latestOutputToEditor(pi: ExtensionAPI) {
+export default function (pi: ExtensionAPI) {
   let latestOutput = "";
 
   pi.on("session_start", async (_event, ctx) => {
@@ -90,7 +90,6 @@ export default function latestOutputToEditor(pi: ExtensionAPI) {
   pi.on("message_end", async (event) => {
     const message = event.message as MessageLike;
     if (!isOutputMessage(message)) return;
-
     const text = contentToText(message.content);
     if (text) latestOutput = text;
   });
@@ -102,12 +101,10 @@ export default function latestOutputToEditor(pi: ExtensionAPI) {
 
   async function fillEditor(ctx: ExtensionContext) {
     if (!ctx.hasUI) return;
-
     if (!latestOutput) {
       ctx.ui.notify("No assistant/tool output found yet", "warning");
       return;
     }
-
     ctx.ui.setEditorText(latestOutput);
     dispatchCtrlG();
   }

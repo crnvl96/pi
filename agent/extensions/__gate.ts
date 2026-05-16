@@ -12,7 +12,7 @@ const PERMISSION_GATE_BASH_PATTERNS = [
   { label: "reset --hard", regex: /reset --hard/ },
 ];
 
-export default function PermissionGate(pi: ExtensionAPI): void {
+export default function (pi: ExtensionAPI): void {
   pi.on("tool_call", async (event, ctx) => {
     if (!isToolCallEventType("bash", event)) return;
 

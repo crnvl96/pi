@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import { VERSION } from "@earendil-works/pi-coding-agent";
 
@@ -32,38 +32,24 @@ const contextThinkingLevel = (percent: number) => {
   return "xhigh";
 };
 
-function getPiMascot(theme: Theme): string[] {
-  const piBlue = (text: string) => theme.fg("accent", text);
-  const white = (text: string) => text;
-  const black = (text: string) => theme.fg("dim", text);
-  const BLOCK = "█";
-  const PUPIL = "▌";
-  const eye = `${white(BLOCK)}${black(PUPIL)}`;
-  const lineEyes = `     ${eye}  ${eye}`;
-  const lineBar = `  ${piBlue(BLOCK.repeat(14))}`;
-  const lineLeg = `     ${piBlue(BLOCK.repeat(2))}    ${piBlue(BLOCK.repeat(2))}`;
-  return ["", lineEyes, lineBar, lineLeg, lineLeg, lineLeg, lineLeg, ""];
-}
-
 export default function (pi: ExtensionAPI) {
   const applyLabel = (ctx: ExtensionContext) => {
     ctx.ui.setHiddenThinkingLabel("Pondering...");
   };
 
-  function enableHeader(ctx: ExtensionContext) {
+  function applyHeader(ctx: ExtensionContext) {
     ctx.ui.setHeader((_tui, theme) => {
       return {
         render(_width: number): string[] {
-          const mascotLines = getPiMascot(theme);
           const subtitle = `${theme.fg("muted", "   shitty coding agent")}${theme.fg("dim", ` v${VERSION}`)}`;
-          return [...mascotLines, subtitle];
+          return [subtitle];
         },
         invalidate() {},
       };
     });
   }
 
-  function enableFooter(ctx: ExtensionContext) {
+  function applyFooter(ctx: ExtensionContext) {
     ctx.ui.setFooter((tui, theme, footerData) => {
       const unsub = footerData.onBranchChange(() => tui.requestRender());
 
@@ -71,7 +57,6 @@ export default function (pi: ExtensionAPI) {
         dispose: unsub,
         invalidate() {},
         render(width: number): string[] {
-          const branch = footerData.getGitBranch();
           const fmt = (n: number) => {
             if (n < 1000) return n.toString();
             if (n < 10000) return `${(n / 1000).toFixed(1)}k`;
@@ -79,6 +64,7 @@ export default function (pi: ExtensionAPI) {
             if (n < 10000000) return `${(n / 1000000).toFixed(1)}M`;
             return `${Math.round(n / 1000000)}M`;
           };
+          const branch = footerData.getGitBranch();
           const cwd = lastPathComponent(ctx.cwd);
           const cwdStr = branch ? `${cwd} (${branch})` : cwd;
           const thinkingLevel = pi.getThinkingLevel();
@@ -95,15 +81,11 @@ export default function (pi: ExtensionAPI) {
             contextStr,
             cwdStr ? cyan(cwdStr) : undefined,
           ]);
-
           if (!modelStr) return [truncateToWidth(leftContent, width)];
-
           const modelWidth = visibleWidth(modelStr);
           if (modelWidth >= width) return [truncateToWidth(modelStr, width)];
-
           const left = truncateToWidth(leftContent, Math.max(0, width - modelWidth - 2));
           const padding = " ".repeat(Math.max(0, width - visibleWidth(left) - modelWidth));
-
           return [left + padding + modelStr];
         },
       };
@@ -111,20 +93,20 @@ export default function (pi: ExtensionAPI) {
   }
 
   pi.on("session_start", async (_event, ctx) => {
-    enableFooter(ctx);
-    enableHeader(ctx);
+    applyFooter(ctx);
+    applyHeader(ctx);
     applyLabel(ctx);
   });
 
   pi.on("thinking_level_select", async (_event, ctx) => {
-    enableFooter(ctx);
-    enableHeader(ctx);
+    applyFooter(ctx);
+    applyHeader(ctx);
     applyLabel(ctx);
   });
 
   pi.on("model_select", async (_event, ctx) => {
-    enableFooter(ctx);
-    enableHeader(ctx);
+    applyFooter(ctx);
+    applyHeader(ctx);
     applyLabel(ctx);
   });
 }
