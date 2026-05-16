@@ -41,7 +41,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setHeader((_tui, theme) => {
       return {
         render(_width: number): string[] {
-          const subtitle = `${theme.fg("muted", "   shitty coding agent")}${theme.fg("dim", ` v${VERSION}`)}`;
+          const subtitle = `${theme.fg("muted", "shitty coding agent")}${theme.fg("dim", ` v${VERSION}`)}`;
           return [subtitle];
         },
         invalidate() {},
@@ -51,10 +51,8 @@ export default function (pi: ExtensionAPI) {
 
   function applyFooter(ctx: ExtensionContext) {
     ctx.ui.setFooter((tui, theme, footerData) => {
-      const unsub = footerData.onBranchChange(() => tui.requestRender());
-
       return {
-        dispose: unsub,
+        dispose: footerData.onBranchChange(() => tui.requestRender()),
         invalidate() {},
         render(width: number): string[] {
           const fmt = (n: number) => {

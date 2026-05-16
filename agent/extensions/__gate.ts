@@ -24,6 +24,8 @@ export default function (pi: ExtensionAPI): void {
     if (!ctx.hasUI)
       return { block: true, reason: "Dangerous command blocked (no UI for confirmation)" };
 
+    process.stdout.write(`\x1b]777;notify;"Pi";"Dangerous command needs approval"\x07`);
+
     const choice = await ctx.ui.select(`Dangerous command:\n\n  ${command}\n\nAllow?`, [
       "Yes",
       "No",
