@@ -45,7 +45,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setHiddenThinkingLabel("Pondering...");
   };
 
-  function applyHeader(ctx: ExtensionContext) {
+  const applyHeader = (ctx: ExtensionContext) => {
     ctx.ui.setHeader((_tui, theme) => {
       return {
         render(_width: number): string[] {
@@ -55,9 +55,9 @@ export default function (pi: ExtensionAPI) {
         invalidate() {},
       };
     });
-  }
+  };
 
-  function applyFooter(ctx: ExtensionContext) {
+  const applyFooter = (ctx: ExtensionContext) => {
     ctx.ui.setFooter((tui, theme, footerData) => {
       const getCwd = () => {
         const branch = footerData.getGitBranch();
@@ -66,8 +66,6 @@ export default function (pi: ExtensionAPI) {
         if (!strCwd) return undefined;
         return cyan(strCwd);
       };
-
-      const model = ctx.model ? cyan(`${ctx.model.provider}/${ctx.model.id}`) : undefined;
 
       const getThinkingLevel = () => {
         const thinkingLevel = pi.getThinkingLevel();
@@ -90,18 +88,20 @@ export default function (pi: ExtensionAPI) {
         invalidate() {},
         render(width: number): string[] {
           const leftContent = getLeft();
-          if (!model) return [truncateToWidth(leftContent, width)];
 
-          const modelWidth = visibleWidth(model);
-          if (modelWidth >= width) return [truncateToWidth(model, width)];
+          if (!ctx.model) return [truncateToWidth(leftContent, width)];
+
+          const modelStr = cyan(`${ctx.model.provider}/${ctx.model.id}`);
+          const modelWidth = visibleWidth(modelStr);
+          if (modelWidth >= width) return [truncateToWidth(modelStr, width)];
 
           const left = truncateToWidth(leftContent, Math.max(0, width - modelWidth - 2));
           const padding = " ".repeat(Math.max(0, width - visibleWidth(left) - modelWidth));
-          return [left + padding + model];
+          return [left + padding + modelStr];
         },
       };
     });
-  }
+  };
 
   pi.on("session_start", async (_event, ctx) => {
     applyFooter(ctx);
