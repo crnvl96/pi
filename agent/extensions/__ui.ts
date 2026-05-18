@@ -81,20 +81,15 @@ export default function (pi: ExtensionAPI) {
         return color(contextStr);
       };
 
-      const getLeft = () => joinStatusParts([getThinkingLevel(), getContextUsage(), getCwd()]);
-
       return {
         dispose: footerData.onBranchChange(() => tui.requestRender()),
         invalidate() {},
         render(width: number): string[] {
-          const leftContent = getLeft();
-
+          const leftContent = joinStatusParts([getThinkingLevel(), getContextUsage(), getCwd()]);
           if (!ctx.model) return [truncateToWidth(leftContent, width)];
-
           const modelStr = cyan(`${ctx.model.provider}/${ctx.model.id}`);
           const modelWidth = visibleWidth(modelStr);
           if (modelWidth >= width) return [truncateToWidth(modelStr, width)];
-
           const left = truncateToWidth(leftContent, Math.max(0, width - modelWidth - 2));
           const padding = " ".repeat(Math.max(0, width - visibleWidth(left) - modelWidth));
           return [left + padding + modelStr];

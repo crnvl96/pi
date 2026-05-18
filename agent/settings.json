@@ -1,9 +1,9 @@
 {
-  "lastChangelogVersion": "0.75.0",
+  "lastChangelogVersion": "0.75.1",
   "packages": [],
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-5.5",
-  "defaultThinkingLevel": "high",
+  "defaultThinkingLevel": "xhigh",
   "hideThinkingBlock": true,
   "treeFilterMode": "no-tools",
   "shellCommandPrefix": "shopt -s expand_aliases\neval \"$(grep '^alias ' ~/.bashrc)\""
