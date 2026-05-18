@@ -124,7 +124,7 @@ function validateDomainFilter(domains: string[]): string[] {
 }
 
 function normalizeQueryList(queryList: unknown[]): string[] {
-  const normalized: string[] = [];
+  const normalized = [];
   for (const query of queryList) {
     if (typeof query !== "string") continue;
     const trimmed = query.trim();
@@ -517,17 +517,16 @@ export default function (pi: ExtensionAPI) {
         Type.Array(Type.String(), { description: "Limit to domains (prefix with - to exclude)" }),
       ),
     }),
-
     async execute(_toolCallId, params, signal, onUpdate) {
-      const rawQueryList: unknown[] = Array.isArray(params.queries)
-        ? params.queries
-        : params.query !== undefined
-          ? [params.query]
-          : [];
+      const getQueries = () => {
+        if (Array.isArray(params.queries)) return params.queries;
+        if (params.query !== undefined) return [params.query];
+        return [];
+      };
 
-      const queryList = normalizeQueryList(rawQueryList);
+      const queries = normalizeQueryList(getQueries());
 
-      if (queryList.length === 0) {
+      if (queries.length === 0) {
         return {
           content: [{ type: "text", text: "Error: No query provided. Use query or queries." }],
           details: {
@@ -552,11 +551,11 @@ export default function (pi: ExtensionAPI) {
       let totalResults = 0;
       let fetchedUrls = 0;
 
-      for (let i = 0; i < queryList.length; i++) {
-        const query = queryList[i];
+      for (let i = 0; i < queries.length; i++) {
+        const query = queries[i];
         onUpdate?.({
-          content: [{ type: "text", text: `Searching ${i + 1}/${queryList.length}: ${query}` }],
-          details: { phase: "search", progress: i / queryList.length, currentQuery: query },
+          content: [{ type: "text", text: `Searching ${i + 1}/${queries.length}: ${query}` }],
+          details: { phase: "search", progress: i / queries.length, currentQuery: query },
         });
 
         try {
@@ -575,7 +574,7 @@ export default function (pi: ExtensionAPI) {
             ],
             details: {
               phase: "fetch",
-              progress: (i + 0.5) / queryList.length,
+              progress: (i + 0.5) / queries.length,
               currentQuery: query,
             },
           });
@@ -603,8 +602,8 @@ export default function (pi: ExtensionAPI) {
       return {
         content: [{ type: "text", text: truncated.text }],
         details: {
-          queries: queryList,
-          queryCount: queryList.length,
+          queries: queries,
+          queryCount: queries.length,
           successfulQueries,
           totalResults,
           fetchedUrls,
@@ -681,7 +680,6 @@ export default function (pi: ExtensionAPI) {
       url: Type.Optional(Type.String({ description: "Single URL to fetch" })),
       urls: Type.Optional(Type.Array(Type.String(), { description: "Multiple URLs to fetch" })),
     }),
-
     async execute(_toolCallId, params, signal, onUpdate) {
       const urlList = normalizeUrlList(params.urls ?? (params.url ? [params.url] : []));
       if (urlList.length === 0) {
