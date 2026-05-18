@@ -524,6 +524,7 @@ export default function (pi: ExtensionAPI) {
         : params.query !== undefined
           ? [params.query]
           : [];
+
       const queryList = normalizeQueryList(rawQueryList);
 
       if (queryList.length === 0) {
