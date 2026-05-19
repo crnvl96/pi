@@ -3,7 +3,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const DEFAULT_INTERACTIVE_COMMANDS = ["vim", "nvim", "vi", "lazygit", "lzg", "nv"];
 
-function isInteractiveCommand(command: string): boolean {
+const isInteractiveCommand = (command: string): boolean => {
   const trimmed = command.trim().toLowerCase();
 
   for (const cmd of DEFAULT_INTERACTIVE_COMMANDS) {
@@ -18,7 +18,7 @@ function isInteractiveCommand(command: string): boolean {
   }
 
   return false;
-}
+};
 
 export default function (pi: ExtensionAPI) {
   pi.on("user_bash", async (event, ctx) => {
