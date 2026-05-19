@@ -123,7 +123,7 @@ function validateDomainFilter(domains: string[]): string[] {
   });
 }
 
-function normalizeQueryList(queryList: unknown[]): string[] {
+const normalizeQueryList = (queryList: unknown[]): string[] => {
   const normalized = [];
   for (const query of queryList) {
     if (typeof query !== "string") continue;
@@ -131,7 +131,7 @@ function normalizeQueryList(queryList: unknown[]): string[] {
     if (trimmed.length > 0) normalized.push(trimmed);
   }
   return normalized;
-}
+};
 
 function normalizeUrlList(urlList: unknown[]): string[] {
   const normalized: string[] = [];
@@ -526,7 +526,7 @@ export default function (pi: ExtensionAPI) {
 
       const queries = normalizeQueryList(getQueries());
 
-      if (queries.length === 0) {
+      if (queries.length === 0)
         return {
           content: [{ type: "text", text: "Error: No query provided. Use query or queries." }],
           details: {
@@ -539,7 +539,6 @@ export default function (pi: ExtensionAPI) {
             sourceUrls: [],
           } satisfies WebSearchDetails,
         };
-      }
 
       const items: Array<{
         query: string;
@@ -548,6 +547,7 @@ export default function (pi: ExtensionAPI) {
         fetched: ExtractedContent[];
         error: string | null;
       }> = [];
+
       let totalResults = 0;
       let fetchedUrls = 0;
 

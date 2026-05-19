@@ -35,7 +35,6 @@ function contentToText(content: string | ContentBlock[] | undefined): string {
   return content
     .map((block) => {
       if (block.type === "text") return (block as TextBlock).text;
-      if (block.type === "thinking") return (block as ThinkingBlock).thinking;
       if (block.type === "toolCall") {
         const toolCall = block as ToolCallBlock;
         const args = stringify(toolCall.arguments);

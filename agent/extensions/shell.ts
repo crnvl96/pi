@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-const DEFAULT_INTERACTIVE_COMMANDS = ["vim", "nvim", "vi"];
+const DEFAULT_INTERACTIVE_COMMANDS = ["vim", "nvim", "vi", "lazygit", "lzg", "nv"];
 
 function isInteractiveCommand(command: string): boolean {
   const trimmed = command.trim().toLowerCase();
@@ -25,6 +25,9 @@ export default function (pi: ExtensionAPI) {
     let command = event.command;
 
     if (!isInteractiveCommand(command)) return;
+
+    if (command === "lzg") command = "lazygit";
+    if (command === "nv") command = "nvim";
 
     if (!ctx.hasUI)
       return {
