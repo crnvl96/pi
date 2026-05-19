@@ -39,4 +39,8 @@ export default function (pi: ExtensionAPI): void {
 
     return;
   });
+
+  pi.on("agent_end", async () => {
+    process.stdout.write(`\x1b]777;notify;"Pi";"Ready for input"\x07`);
+  });
 }

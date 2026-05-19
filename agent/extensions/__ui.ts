@@ -49,8 +49,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setHeader((_tui, theme) => {
       return {
         render(_width: number): string[] {
-          const subtitle = `${theme.fg("muted", "shitty coding agent")}${theme.fg("dim", ` v${VERSION}`)}`;
-          return [subtitle];
+          return [`${theme.fg("muted", "shitty coding agent")}${theme.fg("dim", ` v${VERSION}`)}`];
         },
         invalidate() {},
       };

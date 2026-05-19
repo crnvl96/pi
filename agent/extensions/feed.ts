@@ -40,10 +40,6 @@ function contentToText(content: string | ContentBlock[] | undefined): string {
         const args = stringify(toolCall.arguments);
         return args ? `[tool call: ${toolCall.name}]\n${args}` : `[tool call: ${toolCall.name}]`;
       }
-      if (block.type === "image") {
-        const image = block as ImageBlock;
-        return `[image${image.mimeType || image.mediaType ? `: ${image.mimeType ?? image.mediaType}` : ""}]`;
-      }
       return "";
     })
     .filter(Boolean)
