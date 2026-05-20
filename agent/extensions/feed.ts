@@ -12,9 +12,7 @@ type MessageLike = {
 };
 
 type EntryLike = {
-  type: string;
   message?: MessageLike;
-  summary?: string;
 };
 
 function stringify(value: unknown): string {
@@ -55,10 +53,6 @@ function latestOutputFromSession(ctx: ExtensionContext): string {
 
   for (let i = entries.length - 1; i >= 0; i--) {
     const entry = entries[i];
-    if (entry?.type === "branch_summary" && entry.summary?.trim()) {
-      return entry.summary.trim();
-    }
-
     const message = entry?.message;
     if (!message || !isOutputMessage(message)) continue;
 
@@ -89,13 +83,14 @@ export default function (pi: ExtensionAPI) {
     if (text) latestOutput = text;
   });
 
-  pi.on("session_tree", async (event) => {
-    const summary = event.summaryEntry?.summary?.trim();
-    if (summary) latestOutput = summary;
+  pi.on("session_tree", async (_event, ctx) => {
+    latestOutput = latestOutputFromSession(ctx);
   });
 
   async function fillEditor(ctx: ExtensionContext) {
     if (!ctx.hasUI) return;
+
+    latestOutput = latestOutputFromSession(ctx);
     if (!latestOutput) {
       ctx.ui.notify("No assistant/tool output found yet", "warning");
       return;
