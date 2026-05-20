@@ -9,11 +9,13 @@
     "check": "npm run lint && npm run format:check && npm run typecheck"
   },
   "dependencies": {
+    "@earendil-works/pi-ai": "^0.75.4",
     "@earendil-works/pi-coding-agent": "^0.75.4",
     "@earendil-works/pi-tui": "^0.75.4",
     "@mozilla/readability": "^0.6.0",
     "linkedom": "^0.18.12",
-    "turndown": "^7.2.4"
+    "turndown": "^7.2.4",
+    "typebox": "^1.1.38"
   },
   "devDependencies": {
     "@types/turndown": "^5.0.6",
